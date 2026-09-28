@@ -100,11 +100,26 @@ function isRetryableFetchError(err: unknown): boolean {
   return code === "UND_ERR_CONNECT_TIMEOUT" || code === "UND_ERR_SOCKET" || code === "UND_ERR_HEADERS_TIMEOUT";
 }
 
+type RateLimitBudget = { waitedMs: number };
+const MAX_RATE_LIMIT_WAIT_MS = 60_000; // На весь проход, а не на каждую страницу.
+
+function rateLimitDelayMs(response: Response, attempt: number): number | null {
+  // MoySklad JSON API: оба заголовка содержат оставшееся время в миллисекундах.
+  const delays = [3_000 * 2 ** (attempt - 1)];
+  for (const name of ["X-Lognex-Retry-After", "X-Lognex-Reset"]) {
+    const value = response.headers.get(name)?.trim();
+    if (value && /^\d+(?:\.\d+)?$/.test(value)) delays.push(Number(value));
+  }
+  const delayMs = Math.ceil(Math.max(...delays)) + 250;
+  // Не повторяем раньше разрешённого API времени и не удерживаем очередь надолго.
+  return Number.isFinite(delayMs) && delayMs <= 30_000 ? delayMs : null;
+}
+
 /**
- * fetch с таймаутом и retry на сетевые ошибки.
- * Не ретраим 4xx/5xx ответы MoySklad — это "настоящие" ошибки.
+ * Только чтение вариантов: прежние сетевые retry + ограниченный повтор HTTP 429.
+ * Другие HTTP-ошибки и ошибки JSON не повторяем. Запросы заказов не затронуты.
  */
-async function fetchWithRetry(url: string, token: string): Promise<Response> {
+async function fetchWithRetry(url: string, token: string, budget: RateLimitBudget): Promise<Response> {
   const maxAttempts = 4; // 1 + 3 повтора
   const timeoutMs = 30_000;
 
@@ -113,16 +128,29 @@ async function fetchWithRetry(url: string, token: string): Promise<Response> {
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), timeoutMs);
 
+      let res: Response;
       try {
-        const res = await fetch(url, {
+        res = await fetch(url, {
           headers: getMoySkladHeaders(token),
           signal: ac.signal,
         });
-
-        return res;
       } finally {
         clearTimeout(timer);
       }
+
+      if (res.status === 429 && attempt < maxAttempts) {
+        const delayMs = rateLimitDelayMs(res, attempt);
+        if (delayMs !== null && budget.waitedMs + delayMs <= MAX_RATE_LIMIT_WAIT_MS) {
+          // Освобождаем ответ до ожидания. Тело последней ошибки оставляем вызывающему коду.
+          await res.body?.cancel();
+          budget.waitedMs += delayMs;
+          strapi.log.warn(`[moysklad-variant] HTTP 429: retry=${attempt}/${maxAttempts - 1} delayMs=${delayMs} totalWaitMs=${budget.waitedMs}`);
+          await sleep(delayMs);
+          continue;
+        }
+        strapi.log.warn("[moysklad-variant] HTTP 429: retry wait limit reached; keeping existing variants");
+      }
+      return res;
     } catch (err) {
       const retryable = isRetryableFetchError(err);
 
@@ -140,8 +168,8 @@ async function fetchWithRetry(url: string, token: string): Promise<Response> {
   throw new Error("fetchWithRetry: exhausted");
 }
 
-async function fetchVariantJson(url: string, token: string): Promise<MoySkladVariantListResponse> {
-  const res = await fetchWithRetry(url, token);
+async function fetchVariantJson(url: string, token: string, budget: RateLimitBudget): Promise<MoySkladVariantListResponse> {
+  const res = await fetchWithRetry(url, token, budget);
 
   if (!res.ok) {
     const text = await res.text();
@@ -177,10 +205,11 @@ async function syncAllVariantsUnlocked(): Promise<{ upserted: number; skippedNoP
     // 1) Забираем всё из MoySklad (пагинация)
     const all: MoySkladVariant[] = [];
     let offset = 0;
+    const rateLimitBudget: RateLimitBudget = { waitedMs: 0 };
 
     while (true) {
       const url = `https://api.moysklad.ru/api/remap/1.2/entity/variant?limit=100&offset=${offset}`;
-      const data = await fetchVariantJson(url, token);
+      const data = await fetchVariantJson(url, token, rateLimitBudget);
 
       all.push(...data.rows);
 
