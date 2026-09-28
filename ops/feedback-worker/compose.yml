@@ -1,0 +1,23 @@
+services:
+  feedback-worker:
+    build: .
+    container_name: cd-site-feedback-worker
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    environment:
+      NODE_OPTIONS: --max-old-space-size=80
+    volumes:
+      - /srv/data/cd-site-feedback:/app/state
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    pids_limit: 32
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "2m"
+        max-file: "2"

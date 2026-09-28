@@ -1,0 +1,31 @@
+{
+  "kind": "collectionType",
+  "collectionName": "feedback_messages",
+  "info": {
+    "singularName": "feedback",
+    "pluralName": "feedback-messages",
+    "displayName": "Обратная связь"
+  },
+  "options": { "draftAndPublish": false },
+  "attributes": {
+    "message": { "type": "text", "required": true, "maxLength": 3000 },
+    "email": { "type": "email", "maxLength": 254 },
+    "page": { "type": "string", "maxLength": 250 },
+    "requestId": {
+      "type": "string", "required": true, "unique": true, "private": true,
+      "column": { "unique": true, "notNullable": true }
+    },
+    "payloadHash": { "type": "string", "required": true, "private": true },
+    "notificationStatus": {
+      "type": "enumeration", "enum": ["pending", "sending", "sent", "failed"],
+      "required": true, "default": "pending"
+    },
+    "attempts": { "type": "integer", "default": 0, "min": 0 },
+    "nextAttemptAt": { "type": "datetime" },
+    "leaseToken": { "type": "string", "private": true },
+    "leaseExpiresAt": { "type": "datetime", "private": true },
+    "sentAt": { "type": "datetime" },
+    "telegramMessageId": { "type": "string", "private": true },
+    "deliveryError": { "type": "string", "maxLength": 80 }
+  }
+}
