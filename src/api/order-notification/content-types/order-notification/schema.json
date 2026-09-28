@@ -1,0 +1,20 @@
+{
+  "kind": "collectionType", "collectionName": "order_notifications",
+  "info": { "singularName": "order-notification", "pluralName": "order-notifications", "displayName": "Уведомления о заказах" },
+  "options": { "draftAndPublish": false },
+  "attributes": {
+    "orderId": { "type": "string", "required": true, "unique": true, "private": true, "column": { "unique": true, "notNullable": true } },
+    "orderName": { "type": "string", "required": true },
+    "sourceRequestId": { "type": "integer", "required": true, "private": true },
+    "requestId": { "type": "string", "required": true, "unique": true, "private": true, "column": { "unique": true, "notNullable": true } },
+    "messages": { "type": "json", "private": true },
+    "notificationStatus": { "type": "enumeration", "enum": ["pending", "sending", "sent", "failed"], "required": true, "default": "pending" },
+    "attempts": { "type": "integer", "default": 0 },
+    "nextAttemptAt": { "type": "datetime" },
+    "leaseToken": { "type": "string", "private": true },
+    "leaseExpiresAt": { "type": "datetime", "private": true },
+    "sentAt": { "type": "datetime" },
+    "telegramMessageIds": { "type": "json", "private": true },
+    "deliveryError": { "type": "string", "maxLength": 80 }
+  }
+}

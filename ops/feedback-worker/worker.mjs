@@ -1,6 +1,7 @@
 import { mkdir, open, readFile, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { createOrderWorker } from "./orders.mjs";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -101,6 +102,7 @@ export function createWorker(config, { fetchImpl = fetch, receipts = fileReceipt
   }
   return {
     verifyRecipient,
+    ensureRecipient: () => Date.now() < verifiedUntil ? Promise.resolve() : verifyRecipient(),
     async runOnce() {
       if (Date.now() >= verifiedUntil) await verifyRecipient();
       const { item } = await api("claim", {});
@@ -133,15 +135,22 @@ async function main() {
     console.log("[feedback-worker] disabled");
     return;
   }
-  const worker = createWorker(configuration(process.env));
+  const config = configuration(process.env);
+  const worker = createWorker(config);
   let stopping = false;
+  const orderWorker = process.env.ORDER_NOTIFICATIONS_ENABLED === "true" ? createOrderWorker(config, {
+    receipts: fileReceipts(config.stateDir), verifyRecipient: worker.ensureRecipient, isStopping: () => stopping,
+  }) : null;
   process.on("SIGTERM", () => { stopping = true; });
   process.on("SIGINT", () => { stopping = true; });
   while (!stopping) {
-    try {
-      const outcome = await worker.runOnce();
-      if (outcome !== "empty") console.log(`[feedback-worker] ${outcome}`);
-    } catch { console.error("[feedback-worker] iteration failed; will retry"); }
+    for (const [name, sender] of [["feedback", worker], ["orders", orderWorker]]) {
+      if (!sender || stopping) continue;
+      try {
+        const outcome = await sender.runOnce();
+        if (outcome !== "empty") console.log(`[${name}-worker] ${outcome}`);
+      } catch { console.error(`[${name}-worker] iteration failed; will retry`); }
+    }
     if (!stopping) await new Promise(resolve => setTimeout(resolve, 10_000));
   }
 }
