@@ -19,7 +19,7 @@ function fail(ctx: Context, status: number, error: string) {
   ctx.status = status;
   ctx.body = { ok: false, error };
 }
-function workerAuthorized(ctx: Context) {
+export function workerAuthorized(ctx: Context) {
   const secret = process.env.FEEDBACK_WORKER_TOKEN || "";
   const supplied = ctx.get("authorization").replace(/^Bearer /, "");
   const expectedBytes = Buffer.from(secret);
