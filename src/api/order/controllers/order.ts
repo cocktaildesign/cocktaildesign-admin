@@ -1,5 +1,6 @@
 import type { Context } from "koa";
 import orderService from "../services/order";
+import { loadSampleSaleFolderIdSet } from "../../../utils/product-discount-policy";
 import type { PromoCodeResolveResult } from "../../promo-code/services/promo-code";
 
 type ValidationErrorCode =
@@ -431,10 +432,11 @@ export default {
 
     let trustedSubtotal = 0;
     let trustedDiscountableSubtotal = 0;
+    const sampleSaleFolderIds = await loadSampleSaleFolderIdSet(strapi);
 
     for (const item of items) {
       try {
-        const resolved = await orderService.resolveOrderItemByCode(item.code);
+        const resolved = await orderService.resolveOrderItemByCode(item.code, sampleSaleFolderIds);
 
         positions.push({
           productHref: resolved.href,
