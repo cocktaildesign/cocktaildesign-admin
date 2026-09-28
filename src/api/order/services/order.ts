@@ -1,3 +1,5 @@
+import { isProductDiscountExcluded, loadSampleSaleFolderIdSet } from "../../../utils/product-discount-policy";
+
 const MS_BASE = "https://api.moysklad.ru/api/remap/1.2";
 const MS_REQUEST_TIMEOUT_MS = 15_000;
 
@@ -231,12 +233,14 @@ async function findProductHref(code: string): Promise<{ href: string; type: stri
   }
 }
 
-async function resolveOrderItemByCode(rawCode: string): Promise<ResolvedOrderItem> {
+async function resolveOrderItemByCode(rawCode: string, folderIds?: Set<string>): Promise<ResolvedOrderItem> {
   const code = normalizeCode(rawCode);
 
   if (!code) {
     throw createOrderError("invalid_item_code");
   }
+
+  const sampleSaleFolderIds = folderIds ?? await loadSampleSaleFolderIdSet(strapi);
 
   const variantQuery = strapi.db.query("api::moysklad-variant.moysklad-variant");
   const productQuery = strapi.db.query("api::moysklad-product.moysklad-product");
@@ -256,6 +260,7 @@ async function resolveOrderItemByCode(rawCode: string): Promise<ResolvedOrderIte
           "isHiddenOnSite",
           "isOutOfStock",
         ],
+        populate: { category: { select: ["moyskladId"] } },
       },
     },
   });
@@ -307,7 +312,7 @@ async function resolveOrderItemByCode(rawCode: string): Promise<ResolvedOrderIte
       type,
       trustedName: (variant.name || parentProduct?.name || code).trim(),
       trustedPriceRub: resolvedPrice,
-      trustedDiscountExcluded: Boolean(parentProduct?.discountExcluded ?? false),
+      trustedDiscountExcluded: isProductDiscountExcluded(parentProduct, sampleSaleFolderIds),
     };
   }
 
@@ -323,6 +328,7 @@ async function resolveOrderItemByCode(rawCode: string): Promise<ResolvedOrderIte
       "isHiddenOnSite",
       "isOutOfStock",
     ],
+    populate: { category: { select: ["moyskladId"] } },
   });
 
   if (!product) {
@@ -361,7 +367,7 @@ async function resolveOrderItemByCode(rawCode: string): Promise<ResolvedOrderIte
     type,
     trustedName: (product.name || code).trim(),
     trustedPriceRub: product.price,
-    trustedDiscountExcluded: Boolean(product.discountExcluded ?? false),
+    trustedDiscountExcluded: isProductDiscountExcluded(product, sampleSaleFolderIds),
   };
 }
 

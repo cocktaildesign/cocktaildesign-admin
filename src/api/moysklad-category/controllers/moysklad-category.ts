@@ -15,29 +15,13 @@ import {
   type ProductNoveltyConfig,
 } from "../../../utils/product-novelty";
 import {
-  buildSampleSaleMoyskladIdSetFromStrapiCategories,
   isInsideSampleSaleFolderTree,
 } from "../../../utils/moysklad-sample-sale";
+import { isProductDiscountExcluded, loadSampleSaleFolderIdSet } from "../../../utils/product-discount-policy";
 import syncServiceFactory from "../services/sync";
 
 const UTSENKA_COLLECTION_SLUG = "utsenka";
 const UTSENKA_BREADCRUMB_LABEL = "Уценка";
-
-/**
- * Один раз за загружает Set moyskladId дерева Sample Sale.
- * Дальше проверки товаров идут через Set — без N+1.
- */
-async function loadSampleSaleFolderIdSet(strapi: any): Promise<Set<string>> {
-  const categoryQuery = strapi.db.query("api::moysklad-category.moysklad-category");
-
-  const rows = await categoryQuery.findMany({
-    select: ["id", "moyskladId"],
-    populate: { parent: { select: ["id"] } },
-    limit: 100000,
-  });
-
-  return buildSampleSaleMoyskladIdSetFromStrapiCategories(Array.isArray(rows) ? rows : []);
-}
 
 /** Витринное имя категории: любое дерево Sample Sale → «Уценка». */
 function resolveStorefrontCategoryName(
@@ -296,7 +280,7 @@ function mapCatalogProductPreviewItem(
       price: product.price ?? null,
       priceOld: product.priceOld ?? null,
       engravingEnabled: product.engravingEnabled ?? false,
-      discountExcluded: product.discountExcluded ?? false,
+      discountExcluded: isProductDiscountExcluded(product, sampleSaleFolderIds),
       code: product.code ?? null,
       image: (product as any).image ?? null,
       variants: mapPreviewVariants((product as any).variants),
@@ -1085,7 +1069,7 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
           image: Array.isArray((product as any).image) ? (product as any).image : [],
           specifications,
           engravingEnabled: product.engravingEnabled ?? false,
-          discountExcluded: product.discountExcluded ?? false,
+          discountExcluded: isProductDiscountExcluded(product, sampleSaleFolderIds),
           code: product.code ?? null,
           isNew: isProductNew(product.moyskladNoveltyAt, noveltyConfig.noveltyDays),
           noveltyBadgeColor: noveltyConfig.noveltyBadgeColor,
