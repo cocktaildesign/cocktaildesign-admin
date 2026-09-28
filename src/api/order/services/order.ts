@@ -509,6 +509,9 @@ async function createCustomerOrder(params: {
     },
     description: params.description,
     shipmentAddress: params.shipmentAddress,
+    // Цены сайта уже включают НДС: ставка не увеличивает итог заказа.
+    vatEnabled: true,
+    vatIncluded: true,
     attributes: [
       {
         meta: {
@@ -529,8 +532,8 @@ async function createCustomerOrder(params: {
       quantity: p.quantity,
       price: p.price * 100,
       discount: normalizeDiscountPercent(p.discountPercent),
-      vat: 0,
-      vatEnabled: false,
+      vat: 5,
+      vatEnabled: true,
       assortment: {
         meta: {
           href: p.productHref,

@@ -67,7 +67,12 @@ function fixture() {
       return {ok:true,json:async()=>({meta:{href:'https://example.invalid/customer/test'}})};
     }
     assert(url.endsWith('/entity/customerorder'),'Unexpected HTTP target');
+    const payload=state.posts.at(-1).body;
+    assert.equal(payload.vatEnabled,true,'order must account for VAT');
+    assert.equal(payload.vatIncluded,true,'VAT must not be added on top of website prices');
+    for(const position of payload.positions){assert.equal(position.vat,5);assert.equal(position.vatEnabled,true);}
     if(state.failure==='timeout')throw Object.assign(new Error('simulated timeout'),{name:'AbortError'});
+    if(state.failure==='http')return {ok:false,status:503};
     return {ok:true,json:async()=>({id:'offline-order',name:'OFFLINE-TEST'})};
   };
   const context=vm.createContext({strapi,fetch:mockFetch,process:{env:{}},AbortController,setTimeout,clearTimeout,console});
@@ -91,9 +96,9 @@ function fixture() {
   strapi.service=uid=>{assert.equal(uid,'api::promo-code.promo-code');return promo;};
   const controller=load('src/api/order/controllers/order.ts').default;
   const policy=load('src/api/moysklad-category/controllers/cart-discount-policy.ts').default;
-  async function order(codes,promoCode,key='offline-test-key-1234') {
+  async function order(codes,promoCode,key='offline-test-key-1234',overrides={}) {
     const ctx={request:{body:{buyerType:'individual',fullName:'Offline test',phone:'0000000000',address:'Test only',promoCode,
-      items:codes.map(code=>({code,quantity:1,price:1,discountExcluded:false}))}},get:()=>key};
+      items:codes.map(code=>({code,quantity:1,price:1,discountExcluded:false})),...overrides}},get:()=>key};
     await controller.create(ctx);return plain({status:ctx.status??200,body:ctx.body});
   }
   async function flags(codes){const ctx={query:{codes:JSON.stringify(codes)},set(){}};await policy.find(ctx);return plain(ctx.body);}
@@ -176,4 +181,50 @@ test('pre-order CRM failure releases request without creating order',async()=>{
   const f=fixture();f.state.failure='counterparty';
   assert.equal((await f.order(['REG','SALE'])).body.error,'order_validation_failed');
   assert.equal(f.state.requests.size,0);assert.equal(f.state.posts.length,1);
+});
+
+test('VAT is included for regular, sample-sale, variant, bundle and manually excluded items',async()=>{
+  const f=fixture();assert((await f.order(['REG','SALE','VAR','BUNDLE','MANUAL'])).body.ok);
+  const positions=f.state.posts[1].body.positions;
+  assert.deepEqual(positions.map(p=>[p.assortment.meta.type,p.price,p.discount,p.vat,p.vatEnabled]),[
+    ['product',1000000,5,5,true],['product',500000,0,5,true],['variant',70000,0,5,true],
+    ['bundle',200000,5,5,true],['product',100000,0,5,true],
+  ]);
+  assert.equal(positions.reduce((sum,p)=>sum+p.price*p.quantity*(1-p.discount/100),0),1810000);
+});
+
+test('1050 rubles stay 1050 with included VAT of 50 rubles',async()=>{
+  const f=fixture();f.products[0].price=1050;assert((await f.order(['REG'])).body.ok);
+  const payload=f.state.posts[1].body,p=payload.positions[0];
+  assert.equal(payload.vatIncluded,true);assert.equal(p.price,105000);assert.equal(p.discount,0);
+  assert.equal(p.price*p.vat/(100+p.vat),5000);
+});
+
+test('VAT preserves unit prices and multiple quantities',async()=>{
+  const f=fixture();f.products[0].price=1234;
+  assert((await f.order(['REG'],undefined,'vat-quantities-test',{items:[{code:'REG',quantity:3,price:1}]})).body.ok);
+  const p=f.state.posts[1].body.positions[0];assert.equal(p.quantity,3);assert.equal(p.price,123400);assert.equal(p.discount,0);
+});
+
+test('a fixed promo covering the whole item keeps 5 percent VAT without extra payment',async()=>{
+  const f=fixture();f.products[1].price=400;assert((await f.order(['SALE'],'MONEY')).body.ok);
+  const p=f.state.posts[1].body.positions[0];assert.equal(p.price,40000);assert.equal(p.discount,100);
+  assert.equal(p.price*(1-p.discount/100),0);assert.equal(p.vat,5);
+});
+
+test('orders for a company keep the same included VAT mode and discount',async()=>{
+  const f=fixture();const result=await f.order(['REG','SALE'],'PERCENT','vat-company-test',{buyerType:'legal',contactName:'Offline Company',inn:'0000000000'});
+  assert(result.body.ok);const p=f.state.posts[1].body.positions;
+  assert.deepEqual(p.map(x=>[x.price,x.discount,x.vat]),[[1000000,10,5],[500000,0,5]]);
+});
+
+test('existing fractional-price rejection is unchanged and sends nothing to CRM',async()=>{
+  const f=fixture();f.products[0].price=1234.56;
+  assert.equal((await f.order(['REG'])).body.error,'item_price_invalid');assert.equal(f.state.posts.length,0);
+});
+
+test('CRM HTTP failure after VAT payload stays unknown and cannot create a duplicate',async()=>{
+  const f=fixture();f.state.failure='http';
+  assert.equal((await f.order(['REG','SALE'])).body.error,'order_status_unknown');
+  assert.equal((await f.order(['REG','SALE'])).status,409);assert.equal(f.state.posts.length,2);
 });
