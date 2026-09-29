@@ -108,7 +108,7 @@ function fixture() {
 test('catalog policy handles category descendants, variants, manual exclusions and category moves',async()=>{
   const f=fixture();
   assert.deepEqual((await f.flags(['REG','SALE','CHILD','VAR','MANUAL','HIDDEN','BUNDLE'])).items,
-    [['REG',false],['SALE',true],['CHILD',true],['VAR',true],['MANUAL',true],['BUNDLE',false]].map(([code,discountExcluded])=>({code,discountExcluded})));
+    [['REG',false],['SALE',true],['CHILD',true],['VAR',true],['MANUAL',true],['BUNDLE',false]].map(([code,discountExcluded])=>({code,discountExcluded,engravingEnabled:false})));
   f.products[0].category.moyskladId='sample-child';
   assert.equal((await f.flags(['REG'])).items[0].discountExcluded,true);
   f.products[0].category.moyskladId='ordinary';
@@ -122,6 +122,32 @@ test('saved-cart endpoint rejects malformed and oversized batches without querie
     const ctx={query:{codes:value}};await f.policy.find(ctx);assert.equal(ctx.status,400);
   }
   assert.equal(f.state.categoryReads,0);
+});
+
+test('cart engraving permission follows CMS and variant parent; lookup does not change orders',async()=>{
+  const f=fixture();
+  f.products[0].engravingEnabled=true;
+  f.variants[0].product.engravingEnabled=true;
+  const items=(await f.flags(['REG','SALE','VAR','HIDDEN'])).items;
+  assert.deepEqual(items.map(p=>[p.code,p.engravingEnabled]),[['REG',true],['SALE',false],['VAR',true]]);
+  f.variants[0].product.engravingEnabled=false;
+  assert.equal((await f.flags(['VAR'])).items[0].engravingEnabled,false);
+  assert.equal(f.state.posts.length,0);
+});
+
+test('engraving request changes only CRM description for every existing promo type',async()=>{
+  for(const promo of ['', 'PERCENT','STARTUP','MONEY','GIFT']) {
+    const a=fixture(), b=fixture();
+    const base=['REG','SALE','VAR'].map(code=>({code,quantity:2,engraving:false}));
+    const selected=base.map((p,i)=>({...p,engraving:i===0}));
+    assert.equal((await a.order([],promo,'offline-without-engraving',{items:base})).body.ok,true);
+    assert.equal((await b.order([],promo,'offline-with-engraving',{items:selected})).body.ok,true);
+    const before=a.state.posts.at(-1).body,after=b.state.posts.at(-1).body;
+    assert.deepEqual(after.positions,before.positions);
+    assert.match(after.description,/Гравировка: REG/);
+    assert.doesNotMatch(before.description,/Гравировка:/);
+    assert.deepEqual({...after,description:''},{...before,description:''});
+  }
 });
 
 test('mixed order trusts database price/policy and sends zero volume discount for sample-sale',async()=>{
