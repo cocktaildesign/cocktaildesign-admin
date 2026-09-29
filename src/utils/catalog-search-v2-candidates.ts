@@ -1,133 +1,23 @@
 import type { Core } from "@strapi/strapi";
-
-import {
-  type CatalogSearchCandidate,
-  type PreparedCatalogSearchQuery,
-} from "./catalog-search-v2";
+import type { CatalogSearchCandidate, PreparedCatalogSearchQuery } from "./catalog-search-v2";
 import { getStorefrontVisibleProductFilter } from "./storefront-product-visibility";
+import { isInsideSampleSaleFolderTree } from "./moysklad-sample-sale";
 
-const PRODUCT_UID = "api::moysklad-product.moysklad-product";
-
-const CATALOG_ROOT_PARENT_ID = 14;
-const EXACT_CODE_CANDIDATE_LIMIT = 10;
-const TEXT_CANDIDATE_LIMIT = 80;
-
-const CANDIDATE_SELECT = ["id", "name", "code", "searchText", "searchCodes"] as const;
-
-export type CatalogSearchCandidatesResult = {
-  candidates: CatalogSearchCandidate[];
-  exactCodeCount: number;
-  textCount: number;
-};
-
-type ProductQuery = {
-  findMany: (args: Record<string, unknown>) => Promise<CatalogSearchCandidate[]>;
-};
-
-function buildVisibilityFilters() {
-  return [
-    {
-      category: {
-        id: {
-          $notIn: [CATALOG_ROOT_PARENT_ID],
-        },
-      },
-    },
-    getStorefrontVisibleProductFilter(),
-  ];
-}
-
-async function findExactCodeCandidates(
-  strapi: Core.Strapi,
-  query: PreparedCatalogSearchQuery,
-): Promise<CatalogSearchCandidate[]> {
-  if (!query.exactCodeNeedle) {
-    return [];
-  }
-
-  const productQuery = strapi.db.query(PRODUCT_UID) as ProductQuery;
-
-  return productQuery.findMany({
-    where: {
-      $and: [
-        {
-          searchCodes: {
-            $containsi: query.exactCodeNeedle,
-          },
-        },
-        ...buildVisibilityFilters(),
-      ],
-    },
-    select: [...CANDIDATE_SELECT],
-    orderBy: { id: "desc" },
-    limit: EXACT_CODE_CANDIDATE_LIMIT,
-  });
-}
-
-async function findTextCandidates(
-  strapi: Core.Strapi,
-  query: PreparedCatalogSearchQuery,
-): Promise<CatalogSearchCandidate[]> {
-  if (query.tokens.length === 0) {
-    return [];
-  }
-
-  const productQuery = strapi.db.query(PRODUCT_UID) as ProductQuery;
-
-  return productQuery.findMany({
-    where: {
-      $and: [
-        ...query.tokens.map((token) => ({
-          searchText: {
-            $containsi: token,
-          },
-        })),
-        ...buildVisibilityFilters(),
-      ],
-    },
-    select: [...CANDIDATE_SELECT],
-    orderBy: { id: "desc" },
-    limit: TEXT_CANDIDATE_LIMIT,
-  });
-}
-
-function mergeCandidatesById(
-  exactCodeCandidates: CatalogSearchCandidate[],
-  textCandidates: CatalogSearchCandidate[],
-): CatalogSearchCandidate[] {
-  const seenIds = new Set<number>();
-  const merged: CatalogSearchCandidate[] = [];
-
-  for (const candidate of [...exactCodeCandidates, ...textCandidates]) {
-    if (seenIds.has(candidate.id)) {
-      continue;
-    }
-
-    seenIds.add(candidate.id);
-    merged.push(candidate);
-  }
-
-  return merged;
-}
-
-export async function findCatalogSearchCandidates(
-  strapi: Core.Strapi,
-  query: PreparedCatalogSearchQuery,
-): Promise<CatalogSearchCandidatesResult> {
-  if (!query.isValid) {
-    return {
-      candidates: [],
-      exactCodeCount: 0,
-      textCount: 0,
-    };
-  }
-
-  const exactCodeCandidates = await findExactCodeCandidates(strapi, query);
-  const textCandidates = await findTextCandidates(strapi, query);
-
-  return {
-    candidates: mergeCandidatesById(exactCodeCandidates, textCandidates),
-    exactCodeCount: exactCodeCandidates.length,
-    textCount: textCandidates.length,
-  };
+/** Rank all matching lightweight rows; only hydrate images/details for the requested page. */
+export async function findCatalogSearchCandidates(strapi: Core.Strapi, query: PreparedCatalogSearchQuery, sampleSaleFolderIds: Set<string>) {
+  if (!query.isValid) return { candidates: [] as CatalogSearchCandidate[] };
+  const matches: any[] = [];
+  if (query.exactCodeNeedle) matches.push({ searchCodes: { $containsi: query.exactCodeNeedle } });
+  if (query.tokens.length) matches.push({ $and: query.tokens.map(token => ({ searchText: { $containsi: token } })) });
+  const where: any = { $and: [
+    { category: { id: { $notIn: [14] } } }, getStorefrontVisibleProductFilter(),
+    ...(query.sampleSaleOnly ? [{ category: { moyskladId: { $in: [...sampleSaleFolderIds] } } }] : []),
+    ...(query.sampleSaleOnly && !query.tokens.length ? [] : [{ $or: matches }]),
+  ] };
+  const rows = await strapi.db.query("api::moysklad-product.moysklad-product").findMany({
+    where, select: ["id", "name", "code", "searchText", "searchCodes"],
+    populate: { category: { select: ["moyskladId"] }, variants: { select: ["name"] } },
+    orderBy: { id: "asc" },
+  }) as CatalogSearchCandidate[];
+  return { candidates: rows.map(row => ({ ...row, isSampleSale: isInsideSampleSaleFolderTree(row.category?.moyskladId, sampleSaleFolderIds) })) };
 }
