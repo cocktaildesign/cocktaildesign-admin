@@ -10,6 +10,7 @@ export type PreparedCatalogSearchQuery = {
   tokens: string[];
   exactCodeNeedle: string;
   isValid: boolean;
+  sampleSaleOnly: boolean;
 };
 
 export type CatalogSearchCandidate = {
@@ -18,6 +19,9 @@ export type CatalogSearchCandidate = {
   code?: string | null;
   searchText?: string | null;
   searchCodes?: string | null;
+  isSampleSale?: boolean;
+  category?: { moyskladId?: string | null } | null;
+  variants?: Array<{ name?: string | null }>;
 };
 
 const CATALOG_SEARCH_RESULT_LIMIT = 10;
@@ -42,10 +46,13 @@ export function prepareCatalogSearchQuery(value: unknown): PreparedCatalogSearch
   const raw = String(value ?? "").trim();
   const normalizedText = normalizeSearchText(raw);
   const normalizedCode = normalizeSearchCode(raw);
-  const tokens = uniqueTokensInOrder(normalizedText.split(" ").filter(Boolean));
+  const allTokens = uniqueTokensInOrder(normalizedText.split(" ").filter(Boolean));
+  const saleWord = /^уцен(?:ка|ки|ке|ку|кой|енный|енная|енное|енные|енных)$/;
+  const sampleSaleOnly = allTokens.some(token => saleWord.test(token));
+  const tokens = allTokens.filter(token => !saleWord.test(token));
   const exactCodeNeedle = normalizedCode ? `|${normalizedCode}|` : "";
   const isValid =
-    raw.length >= 2 && (normalizedText.length > 0 || normalizedCode.length > 0);
+    raw.length >= 2 && raw.length <= 160 && (normalizedText.length > 0 || normalizedCode.length > 0);
 
   return {
     raw,
@@ -54,6 +61,7 @@ export function prepareCatalogSearchQuery(value: unknown): PreparedCatalogSearch
     tokens,
     exactCodeNeedle,
     isValid,
+    sampleSaleOnly,
   };
 }
 
@@ -81,7 +89,7 @@ export function scoreCatalogSearchCandidate(
   const searchText = candidate.searchText ?? "";
   const searchCodes = candidate.searchCodes ?? "";
 
-  let score = 0;
+  let score = query.sampleSaleOnly && candidate.isSampleSale ? 1 : 0;
 
   if (query.normalizedCode && normalizedParentCode === query.normalizedCode) {
     score += 1200;
@@ -115,42 +123,33 @@ export function scoreCatalogSearchCandidate(
     score += 200;
   }
 
+  // Keep matches for unfinished words too (e.g. "барн лож" while typing).
+  if (query.tokens.length && query.tokens.every(token => searchText.includes(token))) {
+    score += 100;
+  }
+
   return score;
 }
 
-export function rankCatalogSearchCandidates(
-  candidates: CatalogSearchCandidate[],
-  query: PreparedCatalogSearchQuery,
-): CatalogSearchCandidate[] {
-  return [...candidates].sort((left, right) => {
-    const scoreDiff = scoreCatalogSearchCandidate(right, query) - scoreCatalogSearchCandidate(left, query);
-
-    if (scoreDiff !== 0) {
-      return scoreDiff;
-    }
-
-    return right.id - left.id;
-  });
+function exactMatch(candidate: CatalogSearchCandidate, query: PreparedCatalogSearchQuery): number {
+  if (query.normalizedCode && (normalizeSearchCode(candidate.code) === query.normalizedCode ||
+      candidate.searchCodes?.includes(query.exactCodeNeedle))) return 2;
+  if (query.normalizedText && (normalizeSearchText(candidate.name) === query.normalizedText ||
+      candidate.variants?.some(v => normalizeSearchText(v.name) === query.normalizedText))) return 1;
+  return 0;
 }
 
-export function selectTopCatalogSearchCandidates(
-  candidates: CatalogSearchCandidate[],
-  query: PreparedCatalogSearchQuery,
-): CatalogSearchCandidate[] {
-  const scoredCandidates = candidates.map((candidate) => ({
-    candidate,
-    score: scoreCatalogSearchCandidate(candidate, query),
-  }));
+const alphabet = new Intl.Collator("ru", { numeric: true, sensitivity: "base" });
 
-  return scoredCandidates
-    .filter(({ score }) => score > 0)
-    .sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score;
-      }
-
-      return right.candidate.id - left.candidate.id;
-    })
-    .slice(0, CATALOG_SEARCH_RESULT_LIMIT)
+export function rankCatalogSearchCandidates(candidates: CatalogSearchCandidate[], query: PreparedCatalogSearchQuery): CatalogSearchCandidate[] {
+  return candidates.map(candidate => ({ candidate, exact: exactMatch(candidate, query), score: scoreCatalogSearchCandidate(candidate, query) }))
+    .filter(({ candidate, score }) => score > 0 && (!query.sampleSaleOnly || candidate.isSampleSale))
+    .sort((a, b) => b.exact - a.exact ||
+      Number(a.candidate.isSampleSale === true) - Number(b.candidate.isSampleSale === true) ||
+      b.score - a.score || alphabet.compare(a.candidate.name ?? "", b.candidate.name ?? "") || a.candidate.id - b.candidate.id)
     .map(({ candidate }) => candidate);
+}
+
+export function selectTopCatalogSearchCandidates(candidates: CatalogSearchCandidate[], query: PreparedCatalogSearchQuery): CatalogSearchCandidate[] {
+  return rankCatalogSearchCandidates(candidates, query).slice(0, CATALOG_SEARCH_RESULT_LIMIT);
 }

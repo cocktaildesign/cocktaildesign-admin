@@ -1,13 +1,7 @@
 //backend/src/api/moysklad-category/controllers/moysklad-category.ts
 import { factories } from "@strapi/strapi";
 import { getStorefrontVisibleProductFilter } from "../../../utils/storefront-product-visibility";
-import {
-  prepareCatalogSearchQuery,
-  selectTopCatalogSearchCandidates,
-} from "../../../utils/catalog-search-v2";
-import { findCatalogSearchCandidates } from "../../../utils/catalog-search-v2-candidates";
-import { findCatalogSearchResultRows } from "../../../utils/catalog-search-v2-results";
-import { mapCatalogSearchV2Rows } from "../../../utils/catalog-search-v2-response";
+import { getCatalogSearchPage } from "../../../utils/catalog-search-v2-page";
 import { mapProductBadges } from "../../../utils/product-badges";
 import {
   getProductNoveltyConfig,
@@ -1228,33 +1222,10 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
    * Старый GET /api/catalog/search не затрагивается.
    */
   async searchV2(ctx) {
-    const query = prepareCatalogSearchQuery(ctx.query.q);
-
-    if (!query.isValid) {
-      ctx.body = { items: [] };
-      return;
-    }
-
-    const candidateResult = await findCatalogSearchCandidates(strapi, query);
-    const topCandidates = selectTopCatalogSearchCandidates(candidateResult.candidates, query);
-
-    if (topCandidates.length === 0) {
-      ctx.body = { items: [] };
-      return;
-    }
-
-    const rows = await findCatalogSearchResultRows(strapi, topCandidates);
-
-    if (rows.length === 0) {
-      ctx.body = { items: [] };
-      return;
-    }
-
-    const noveltyConfig = await getProductNoveltyConfig(strapi);
-    const sampleSaleFolderIds = await loadSampleSaleFolderIdSet(strapi);
-    const items = mapCatalogSearchV2Rows(rows, query, noveltyConfig, sampleSaleFolderIds);
-
-    ctx.body = { items };
+    ctx.set("Cache-Control", "no-store");
+    const result = await getCatalogSearchPage(strapi, ctx.query);
+    ctx.status = result.status;
+    ctx.body = result.body;
   },
 
   /**

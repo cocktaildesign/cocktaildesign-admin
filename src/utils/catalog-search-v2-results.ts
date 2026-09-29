@@ -1,4 +1,5 @@
 import type { Core } from "@strapi/strapi";
+import { getStorefrontVisibleProductFilter } from "./storefront-product-visibility";
 
 import type { CatalogSearchCandidate } from "./catalog-search-v2";
 
@@ -123,11 +124,7 @@ export async function findCatalogSearchResultRows(
   const productQuery = strapi.db.query(PRODUCT_UID) as ProductQuery;
 
   const rows = await productQuery.findMany({
-    where: {
-      id: {
-        $in: ids,
-      },
-    },
+    where: { $and: [{ id: { $in: ids } }, getStorefrontVisibleProductFilter(), { category: { id: { $notIn: [14] } } }] },
     select: [...SEARCH_RESULT_SELECT],
     populate: SEARCH_RESULT_POPULATE,
     limit: candidates.length,
