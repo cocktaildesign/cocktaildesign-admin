@@ -4,6 +4,12 @@ export default {
   routes: [
     {
       method: "GET",
+      path: "/catalog/availability",
+      handler: "availability.find",
+      config: { auth: false },
+    },
+    {
+      method: "GET",
       path: "/catalog/cart-discount-policy",
       handler: "cart-discount-policy.find",
       config: { auth: false },
