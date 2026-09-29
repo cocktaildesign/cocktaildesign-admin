@@ -19,7 +19,7 @@ export default {
       return;
     }
     const requested = [...new Set((codes as string[]).map(code => code.trim()))];
-    const productFields = ["code", "discountExcluded"];
+    const productFields = ["code", "discountExcluded", "engravingEnabled"];
     const category = { select: ["moyskladId"] };
     const visible = getStorefrontVisibleProductFilter();
     const [folders, products, variants] = await Promise.all([
@@ -33,15 +33,19 @@ export default {
         populate: { product: { select: productFields, populate: { category } } }, limit: 25,
       }),
     ]);
-    const byCode = new Map<string, boolean>();
-    for (const product of products) byCode.set(product.code, isProductDiscountExcluded(product, folders));
+    const byCode = new Map<string, { discountExcluded: boolean; engravingEnabled: boolean }>();
+    const flags = (product) => ({
+      discountExcluded: isProductDiscountExcluded(product, folders),
+      engravingEnabled: product.engravingEnabled === true,
+    });
+    for (const product of products) byCode.set(product.code, flags(product));
     // Same precedence as the trusted order resolver: variant first, parent fallback.
     for (const variant of variants) {
-      if (variant.product) byCode.set(variant.code, isProductDiscountExcluded(variant.product, folders));
+      if (variant.product) byCode.set(variant.code, flags(variant.product));
     }
     ctx.set("Cache-Control", "no-store");
     ctx.body = {
-      items: requested.filter(code => byCode.has(code)).map(code => ({ code, discountExcluded: byCode.get(code) })),
+      items: requested.filter(code => byCode.has(code)).map(code => ({ code, ...byCode.get(code) })),
     };
   },
 };
