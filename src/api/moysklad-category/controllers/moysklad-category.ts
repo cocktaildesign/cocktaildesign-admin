@@ -1302,6 +1302,7 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
             price: p.price ?? null,
             priceOld: p.priceOld ?? null,
             image: randomProductImage,
+            moyskladId: p.moyskladId ?? null,
             categoryName: resolveStorefrontCategoryName(p.category, sampleSaleFolderIds),
             isNew: isProductNew(p.moyskladNoveltyAt, noveltyConfig.noveltyDays),
             noveltyBadgeColor: noveltyConfig.noveltyBadgeColor,
