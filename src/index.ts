@@ -1,6 +1,7 @@
 import type { Core } from "@strapi/strapi";
 import cron from "node-cron";
 import { startAvailabilityJob, stopAvailabilityJob } from "./utils/availability-job";
+import { startNoveltyJob, stopNoveltyJob } from "./utils/novelty-job";
 import {
   enqueueMoySkladMutation,
   recoverMoySkladWebhookQueueAfterRestart,
@@ -129,6 +130,7 @@ export default {
     }
 
     startAvailabilityJob(strapi);
+    startNoveltyJob(strapi);
     await resetMoySkladSyncLockAfterRestart();
     await recoverMoySkladWebhookQueueAfterRestart();
     scheduleMoySkladWebhookDrain();
@@ -204,6 +206,7 @@ export default {
 
   async destroy({ strapi }: { strapi: Core.Strapi }) {
     stopAvailabilityJob();
+    stopNoveltyJob();
     stopMoySkladWebhookQueue();
 
     if (!moySkladCronTask) {
