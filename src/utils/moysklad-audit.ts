@@ -3,6 +3,13 @@
 
 export type MoySkladAuditEntityType = "product" | "bundle" | "variant";
 
+export type MoySkladAuditOptions = {
+  maxPages?: number;
+  maxAttempts?: number;
+  timeoutMs?: number;
+  deadlineMs?: number;
+};
+
 type MoySkladAuditRow = {
   eventType?: string;
   entityType?: string;
@@ -114,9 +121,12 @@ async function requestAuditPage(
   token: string,
   entityType: MoySkladAuditEntityType,
   entityId: string,
+  options: MoySkladAuditOptions,
 ): Promise<MoySkladAuditResponse | null> {
+  const remaining = (options.deadlineMs ?? Infinity) - Date.now();
+  if (remaining <= 0) throw new Error("MoySklad audit deadline reached");
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), Math.min(options.timeoutMs ?? REQUEST_TIMEOUT_MS, remaining));
 
   try {
     const response = await fetch(url, {
@@ -149,6 +159,7 @@ async function fetchAuditPage(
   entityId: string,
   token: string,
   offset: number,
+  options: MoySkladAuditOptions,
 ): Promise<MoySkladAuditResponse | null> {
   const url =
     `${MOYSKLAD_API_BASE}/entity/` +
@@ -158,9 +169,10 @@ async function fetchAuditPage(
 
   let lastError: Error | null = null;
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+  const maxAttempts = options.maxAttempts ?? MAX_ATTEMPTS;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      return await requestAuditPage(url, token, entityType, entityId);
+      return await requestAuditPage(url, token, entityType, entityId, options);
     } catch (err) {
       // HTTP: 404 уже вернул null внутри requestAuditPage.
       // 429 и 5xx — повторяем; остальные 4xx — сразу наружу.
@@ -171,7 +183,7 @@ async function fetchAuditPage(
 
         lastError = err;
 
-        if (attempt >= MAX_ATTEMPTS) {
+        if (attempt >= maxAttempts) {
           throw new Error(
             `MoySklad audit failed for ${entityType}/${entityId}: ${err.message}`,
           );
@@ -194,7 +206,7 @@ async function fetchAuditPage(
           ? err
           : new Error(`MoySklad audit network error for ${entityType}/${entityId}`);
 
-      if (attempt >= MAX_ATTEMPTS) {
+      if (attempt >= maxAttempts) {
         throw new Error(
           `MoySklad audit failed for ${entityType}/${entityId}: ${lastError.message}`,
         );
@@ -217,6 +229,7 @@ async function fetchAuditPage(
 export async function fetchMoySkladEntityCreatedAt(
   entityType: MoySkladAuditEntityType,
   entityId: string,
+  options: MoySkladAuditOptions = {},
 ): Promise<string | null> {
   const token = process.env.MOYSKLAD_ACCESS_TOKEN;
 
@@ -230,9 +243,12 @@ export async function fetchMoySkladEntityCreatedAt(
   }
 
   let offset = 0;
+  let pages = 0;
 
   while (true) {
-    const page = await fetchAuditPage(entityType, safeEntityId, token, offset);
+    if (pages >= (options.maxPages ?? Infinity)) throw new Error("MoySklad audit page limit reached");
+    pages += 1;
+    const page = await fetchAuditPage(entityType, safeEntityId, token, offset, options);
 
     if (page === null) {
       return null;
