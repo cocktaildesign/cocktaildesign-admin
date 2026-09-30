@@ -14,10 +14,20 @@ export function configuration(env) {
   if (!/^\d{6,12}:[A-Za-z0-9_-]{30,60}$/.test(env.TELEGRAM_BOT_TOKEN || "")) throw new Error("invalid_bot_token");
   if (!/^[1-9]\d{4,15}$/.test(env.TELEGRAM_CHAT_ID || "")) throw new Error("invalid_private_chat");
   if (env.TELEGRAM_EXPECTED_USERNAME !== "DK_cocktaildesign") throw new Error("unexpected_recipient");
+  const extraOrderRecipients = JSON.parse(env.ORDER_TELEGRAM_EXTRA_RECIPIENTS || "[]");
+  if (!Array.isArray(extraOrderRecipients) || extraOrderRecipients.length > 4) throw new Error("invalid_order_recipients");
+  const chatIds = new Set([env.TELEGRAM_CHAT_ID]), usernames = new Set([env.TELEGRAM_EXPECTED_USERNAME.toLowerCase()]);
+  for (const recipient of extraOrderRecipients) {
+    if (!recipient || typeof recipient.chatId !== "string" || !/^[1-9]\d{4,15}$/.test(recipient.chatId) ||
+        typeof recipient.username !== "string" || !/^[A-Za-z0-9_]{5,32}$/.test(recipient.username) ||
+        chatIds.has(recipient.chatId) || usernames.has(recipient.username.toLowerCase())) throw new Error("invalid_order_recipient");
+    chatIds.add(recipient.chatId); usernames.add(recipient.username.toLowerCase());
+  }
   return {
     apiUrl: base.href, workerToken: env.FEEDBACK_WORKER_TOKEN,
     botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID,
     username: env.TELEGRAM_EXPECTED_USERNAME,
+    extraOrderRecipients,
     stateDir: resolve(env.FEEDBACK_STATE_DIR || "/app/state"),
   };
 }
