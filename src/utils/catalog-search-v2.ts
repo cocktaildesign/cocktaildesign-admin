@@ -20,8 +20,10 @@ export type CatalogSearchCandidate = {
   searchText?: string | null;
   searchCodes?: string | null;
   isSampleSale?: boolean;
+  hasSearchImage?: boolean;
+  image?: Array<{ url?: string | null }> | null;
   category?: { moyskladId?: string | null } | null;
-  variants?: Array<{ name?: string | null }>;
+  variants?: Array<{ name?: string | null; image?: Array<{ url?: string | null }> | null }>;
 };
 
 const CATALOG_SEARCH_RESULT_LIMIT = 10;
@@ -144,7 +146,8 @@ const alphabet = new Intl.Collator("ru", { numeric: true, sensitivity: "base" })
 export function rankCatalogSearchCandidates(candidates: CatalogSearchCandidate[], query: PreparedCatalogSearchQuery): CatalogSearchCandidate[] {
   return candidates.map(candidate => ({ candidate, exact: exactMatch(candidate, query), score: scoreCatalogSearchCandidate(candidate, query) }))
     .filter(({ candidate, score }) => score > 0 && (!query.sampleSaleOnly || candidate.isSampleSale))
-    .sort((a, b) => b.exact - a.exact ||
+    .sort((a, b) => Number(b.candidate.hasSearchImage === true) - Number(a.candidate.hasSearchImage === true) ||
+      b.exact - a.exact ||
       Number(a.candidate.isSampleSale === true) - Number(b.candidate.isSampleSale === true) ||
       b.score - a.score || alphabet.compare(a.candidate.name ?? "", b.candidate.name ?? "") || a.candidate.id - b.candidate.id)
     .map(({ candidate }) => candidate);

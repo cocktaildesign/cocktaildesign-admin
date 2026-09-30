@@ -34,6 +34,30 @@ test('matching pool is not capped at 10 or 80',()=>{
  const rows=Array.from({length:127},(_,i)=>product(i+1,'Шейкер '+(i+1)));
  assert.equal(rank(rows,q('шейкер')).length,127);assert.deepEqual(ids(rank(rows,q('шейкер'))),rows.map(r=>r.id));
 });
+test('photos precede photo-less exact matches and ordinary products across the full result pool',()=>{
+ const noPhoto=product(1,'Шейкер',{code:'шейкер'});
+ const rows=[noPhoto,...Array.from({length:23},(_,i)=>product(i+2,'Шейкер '+i,{hasSearchImage:true,isSampleSale:i>19}))];
+ const ordered=rank(rows,q('шейкер'));
+ assert.equal(ordered.length,24);assert.equal(ordered.at(-1).id,1);
+ assert.ok(ordered.slice(0,23).every(p=>p.hasSearchImage));
+ assert.equal(rank([noPhoto],q('шейкер'))[0].id,1);
+});
+test('photo priority preserves previous relevance and markdown ordering inside each photo group',()=>{
+ const rows=[product(1,'Шейкер Б',{hasSearchImage:true}),product(2,'Шейкер А',{hasSearchImage:true,isSampleSale:true}),
+ product(3,'Шейкер А'),product(4,'Шейкер Б',{isSampleSale:true}),product(5,'Шейкер',{hasSearchImage:true,isSampleSale:true})];
+ assert.deepEqual(ids(rank(rows,q('шейкер'))),[5,1,2,3,4]);
+ assert.deepEqual(ids(rank(rows.reverse(),q('шейкер'))),[5,1,2,3,4]);
+});
+test('candidate photo presence includes variant fallback and does not treat empty media as a photo',async()=>{
+ const {findCatalogSearchCandidates:find}=load('src/utils/catalog-search-v2-candidates');
+ const rows=[product(1,'Шейкер'),product(2,'Шейкер',{image:[]}),product(3,'Шейкер',{image:[{url:'/uploads/p.webp'}]}),
+ product(4,'Шейкер',{variants:[{name:'Цвет',image:[{url:'/uploads/v.webp'}]}]}),
+ product(5,'Шейкер',{image:[{url:null}],variants:[{name:'Цвет',image:[]}]})];
+ const stub={db:{query(){return {findMany:async()=>rows}}}};
+ const result=await find(stub,q('шейкер'),new Set());
+ assert.deepEqual(Array.from(result.candidates,p=>p.hasSearchImage),[false,false,true,true,false]);
+ assert.deepEqual(ids(rank(result.candidates,q('шейкер'))),[3,4,1,2,5]);
+});
 test('malformed paging fails before touching database',async()=>{
  const {getCatalogSearchPage:page}=load('src/utils/catalog-search-v2-page');
  const noDB=new Proxy({}, {get(){throw Error('DB must not be queried')}});
