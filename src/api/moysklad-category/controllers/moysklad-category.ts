@@ -2,6 +2,7 @@
 import { factories } from "@strapi/strapi";
 import { getStorefrontVisibleProductFilter } from "../../../utils/storefront-product-visibility";
 import { getCatalogSearchPage } from "../../../utils/catalog-search-v2-page";
+import { getNewCollectionPhotoPage } from "../../../utils/new-collection-photo-order";
 import { mapProductBadges } from "../../../utils/product-badges";
 import {
   getProductNoveltyConfig,
@@ -1322,7 +1323,7 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
    * - manual: товары выбраны вручную в админке
    * - category: все товары из указанной категории
    * - discount: все товары со скидкой
-   * - new: новинки по moyskladNoveltyAt (фильтр/сортировка/пагинация в БД)
+   * - new: новинки по moyskladNoveltyAt, товары с фото перед товарами без фото
    *
    * Скрытые товары (isHiddenOnSite = true) исключаются — фильтр стоит
    * внутри getCollectionProducts() для всех режимов (для new — в where запроса).
@@ -1356,7 +1357,7 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
 
     const selectionMode = collection.selectionMode ?? "manual";
 
-    // --- new: пагинация и сортировка на уровне БД ---
+    // --- new: фото перед отсутствующими фото, внутри групп — дата новизны ---
     if (selectionMode === "new") {
       const productQuery = strapi.db.query("api::moysklad-product.moysklad-product");
       const noveltyDays = resolveNoveltyDays((collection as { noveltyDays?: unknown }).noveltyDays);
@@ -1404,19 +1405,23 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
         };
       }
 
-      const total = await productQuery.count({ where });
-
-      const paginatedRows: ProductRow[] =
-        total === 0
+      const { ids, total } = await getNewCollectionPhotoPage(
+        productQuery, where, NEW_COLLECTION_ORDER_BY, limit, offset,
+      );
+      const rows: ProductRow[] =
+        ids.length === 0
           ? []
           : await productQuery.findMany({
-              where,
+              where: { $and: [where, { id: { $in: ids } }] },
               select: [...COLLECTION_PRODUCT_SELECT],
               populate: COLLECTION_PRODUCT_POPULATE,
-              orderBy: NEW_COLLECTION_ORDER_BY,
-              limit,
-              offset,
+              limit: ids.length,
             });
+      const byId = new Map(rows.map(row => [row.id, row]));
+      const paginatedRows = ids.flatMap(id => {
+        const row = byId.get(id);
+        return row ? [row] : [];
+      });
 
       const hasMore = offset + paginatedRows.length < total;
 
