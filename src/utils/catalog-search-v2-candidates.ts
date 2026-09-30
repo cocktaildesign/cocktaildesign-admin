@@ -3,7 +3,7 @@ import type { CatalogSearchCandidate, PreparedCatalogSearchQuery } from "./catal
 import { getStorefrontVisibleProductFilter } from "./storefront-product-visibility";
 import { isInsideSampleSaleFolderTree } from "./moysklad-sample-sale";
 
-/** Rank all matching lightweight rows; only hydrate images/details for the requested page. */
+/** Rank the complete pool, including photo presence; hydrate full details only for the requested page. */
 export async function findCatalogSearchCandidates(strapi: Core.Strapi, query: PreparedCatalogSearchQuery, sampleSaleFolderIds: Set<string>) {
   if (!query.isValid) return { candidates: [] as CatalogSearchCandidate[] };
   const matches: any[] = [];
@@ -16,8 +16,17 @@ export async function findCatalogSearchCandidates(strapi: Core.Strapi, query: Pr
   ] };
   const rows = await strapi.db.query("api::moysklad-product.moysklad-product").findMany({
     where, select: ["id", "name", "code", "searchText", "searchCodes"],
-    populate: { category: { select: ["moyskladId"] }, variants: { select: ["name"] } },
+    populate: {
+      image: { select: ["url"] },
+      category: { select: ["moyskladId"] },
+      variants: { select: ["name"], populate: { image: { select: ["url"] } }, orderBy: { id: "asc" } },
+    },
     orderBy: { id: "asc" },
   }) as CatalogSearchCandidate[];
-  return { candidates: rows.map(row => ({ ...row, isSampleSale: isInsideSampleSaleFolderTree(row.category?.moyskladId, sampleSaleFolderIds) })) };
+  return { candidates: rows.map(row => ({
+    ...row,
+    // Search uses the parent's photo, falling back to a variant's photo.
+    hasSearchImage: Boolean(row.image?.[0]?.url || row.variants?.some(variant => variant.image?.[0]?.url)),
+    isSampleSale: isInsideSampleSaleFolderTree(row.category?.moyskladId, sampleSaleFolderIds),
+  })) };
 }
