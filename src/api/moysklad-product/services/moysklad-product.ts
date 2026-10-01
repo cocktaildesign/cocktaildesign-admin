@@ -170,7 +170,8 @@ type ProductPayloadParams = {
  *
  * Сюда НЕ входят ручные поля Strapi: image, badges, isHiddenOnSite, lockImages,
  * discountExcluded, specifications, composition, catalog_collections,
- * а также displayTitle / description / slug, которые менеджер правит вручную.
+ * а также displayTitle / slug, которые менеджер правит вручную у Sample Sale.
+ * Описание всех товаров принадлежит MoySklad; сохраняем его пробелы и переносы.
  */
 function buildMoySkladOwnedProductFields(
   source: MoySkladOwnedSource,
@@ -181,6 +182,7 @@ function buildMoySkladOwnedProductFields(
   return {
     type: params.type,
     name: source.name ?? "",
+    description: typeof source.description === "string" ? source.description : null,
     moyskladId: params.moyskladId,
     href: params.href,
     code: source.code ?? null,
@@ -195,7 +197,7 @@ function buildMoySkladOwnedProductFields(
 }
 
 /**
- * Полный payload синхронизации: поля MoySklad + displayTitle/description/slug.
+ * Полный payload синхронизации: поля MoySklad + displayTitle/slug.
  * Используется при create и при обычном (не Sample Sale) update.
  */
 function buildFullProductPayload(
@@ -205,7 +207,6 @@ function buildFullProductPayload(
   const payload = buildMoySkladOwnedProductFields(source, params);
 
   payload.displayTitle = source.name ?? "";
-  payload.description = typeof source.description === "string" ? source.description : null;
   payload.publishedAt = params.nowIso;
 
   if (params.canWriteSlug) {
@@ -709,9 +710,9 @@ export default factories.createCoreService("api::moysklad-product.moysklad-produ
             : null;
         strapi.log.info(`[moysklad-sample-sale] webhook created: ${moyskladId}`);
       } else {
-        // Недоступен — трогаем только системные поля, ручные данные сохраняем.
+        // У скрытого товара также обновляем описание из CRM, ручные поля сохраняем.
         const data = hidden
-          ? { ...stockFields }
+          ? { ...stockFields, description: typeof entity.description === "string" ? entity.description : null }
           : { ...buildMoySkladOwnedProductFields(entity, payloadParams), ...stockFields };
 
         await productQuery.update({ where: { id: existing.id }, data });
@@ -1164,9 +1165,9 @@ export default factories.createCoreService("api::moysklad-product.moysklad-produ
             continue;
           }
 
-          // Недоступен — пишем только системные поля, ручные данные не трогаем.
+          // У скрытого товара также обновляем описание из CRM, ручные поля сохраняем.
           const data = hidden
-            ? { ...stockFields }
+            ? { ...stockFields, description: typeof p.description === "string" ? p.description : null }
             : { ...buildMoySkladOwnedProductFields(p, payloadParams), ...stockFields };
 
           await productQuery.update({ where: { id: existingStrapiId }, data });
