@@ -1,0 +1,74 @@
+{
+  "collectionName": "components_homepage_hero_banners",
+  "info": {
+    "displayName": "Верхний баннер",
+    "description": "Рекламный слайд главной страницы"
+  },
+  "options": {},
+  "attributes": {
+    "title": {
+      "type": "string",
+      "required": true,
+      "maxLength": 120
+    },
+    "desktopImage": {
+      "type": "media",
+      "multiple": false,
+      "required": true,
+      "allowedTypes": [
+        "images"
+      ]
+    },
+    "mobileImage": {
+      "type": "media",
+      "multiple": false,
+      "required": true,
+      "allowedTypes": [
+        "images"
+      ]
+    },
+    "href": {
+      "type": "string",
+      "maxLength": 500,
+      "regex": "^(?:/(?!/)[^\\\\\\s]*|https://[^\\\\\\s]+)?$"
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "config": {
+    "metadatas": {
+      "title": {
+        "edit": {
+          "label": "Название и описание картинки",
+          "description": "Коротко опишите рекламу: например, «Новинки октября». Это подпись в списке и альтернативный текст изображения."
+        }
+      },
+      "desktopImage": {
+        "edit": {
+          "label": "Картинка для компьютера",
+          "description": "2048 × 1152 px, 16:9. WebP (предпочтительно), JPG или PNG; желательно до 300 КБ. Края могут обрезаться на разных экранах. Внизу справа может находиться карточка товара недели."
+        }
+      },
+      "mobileImage": {
+        "edit": {
+          "label": "Картинка для телефона",
+          "description": "640 × 800 px, 4:5. WebP, JPG или PNG; желательно до 150 КБ. Подготовьте отдельную вертикальную версию."
+        }
+      },
+      "href": {
+        "edit": {
+          "label": "Куда ведёт баннер",
+          "description": "Путь на сайте, например /catalog/collection/novinki, или полная ссылка https://… Оставьте пустым, если переход не нужен."
+        }
+      },
+      "isActive": {
+        "edit": {
+          "label": "Показывать баннер",
+          "description": "Выключите, чтобы временно скрыть баннер. Порядок меняется перетаскиванием. После изменений нажмите Save, затем Publish."
+        }
+      }
+    }
+  }
+}

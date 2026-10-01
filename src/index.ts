@@ -1,4 +1,5 @@
 import type { Core } from "@strapi/strapi";
+import { registerHomepageBannerValidation } from "./utils/homepage-banners";
 import cron from "node-cron";
 import { startAvailabilityJob, stopAvailabilityJob } from "./utils/availability-job";
 import { startNoveltyJob, stopNoveltyJob } from "./utils/novelty-job";
@@ -74,6 +75,7 @@ let fullSyncRunning = false;
 
 export default {
   register({ strapi }: { strapi: Core.Strapi }) {
+    registerHomepageBannerValidation(strapi);
     strapi.documents.use(async (context, next) => {
       if (!shouldRecomputeCategoryCountsAfterAdminChange(context)) {
         return next();

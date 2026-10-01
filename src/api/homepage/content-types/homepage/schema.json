@@ -5,7 +5,7 @@
     "singularName": "homepage",
     "pluralName": "homepages",
     "displayName": "Главная страница",
-    "description": "Управление товарными подборками главной страницы"
+    "description": "Баннеры и товарные подборки главной страницы"
   },
   "options": {
     "draftAndPublish": true
@@ -31,6 +31,34 @@
       "type": "relation",
       "relation": "manyToOne",
       "target": "api::catalog-collection.catalog-collection"
+    },
+    "heroBanners": {
+      "type": "component",
+      "repeatable": true,
+      "component": "homepage.hero-banner",
+      "max": 6
+    },
+    "promoBanners": {
+      "type": "component",
+      "repeatable": true,
+      "component": "homepage.promo-banner",
+      "max": 6
+    }
+  },
+  "config": {
+    "metadatas": {
+      "heroBanners": {
+        "edit": {
+          "label": "Верхние баннеры",
+          "description": "До 6 баннеров. Перетащите для изменения порядка. Save сохраняет черновик; Publish обновляет сайт примерно за 1–2 минуты."
+        }
+      },
+      "promoBanners": {
+        "edit": {
+          "label": "Нижние баннеры",
+          "description": "До 6 баннеров. Перетащите для изменения порядка. Save сохраняет черновик; Publish обновляет сайт примерно за 1–2 минуты."
+        }
+      }
     }
   }
 }
