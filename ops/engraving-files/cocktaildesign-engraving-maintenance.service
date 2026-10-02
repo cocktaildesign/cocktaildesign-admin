@@ -1,0 +1,15 @@
+[Unit]
+Description=Cocktail Design private engraving file retention and backup
+ConditionPathExists=/home/deploy/strapi_storage/engraving/metadata.sqlite
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cocktaildesign-space-guard run --operation backup --extra-gib 1 -- /usr/sbin/runuser -u deploy -- /usr/bin/python3 /usr/local/lib/cocktaildesign-engraving/management.py maintain --root /home/deploy/strapi_storage/engraving
+Nice=15
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=600
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/deploy/strapi_storage/engraving /var/lib/cocktaildesign-space-guard
+NoNewPrivileges=true
