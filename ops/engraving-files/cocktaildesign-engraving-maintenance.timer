@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly cleanup and bounded daily backup of engraving files
+
+[Timer]
+OnCalendar=*-*-* *:27:00
+RandomizedDelaySec=180
+Persistent=true
+
+[Install]
+WantedBy=timers.target

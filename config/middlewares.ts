@@ -4,6 +4,7 @@ const config: Core.Config.Middlewares = [
   "strapi::logger",
   "strapi::errors",
   "strapi::security",
+  "global::engraving-files",
 
   {
     name: "strapi::cors",

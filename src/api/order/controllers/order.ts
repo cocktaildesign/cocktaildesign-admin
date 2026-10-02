@@ -1,4 +1,5 @@
 import type { Context } from "koa";
+import { readEngravingFiles, bindEngravingFiles, releaseEngravingFiles, completeEngravingFiles } from "../../../utils/order-engraving-files";
 import orderService from "../services/order";
 import { loadSampleSaleFolderIdSet } from "../../../utils/product-discount-policy";
 import type { PromoCodeResolveResult } from "../../promo-code/services/promo-code";
@@ -420,6 +421,10 @@ export default {
       return;
     }
 
+    let engravingFiles: ReturnType<typeof readEngravingFiles>;
+    try { engravingFiles = readEngravingFiles(ctx.request.body, items.some(item => item.engraving)); }
+    catch { ctx.status = 400; ctx.body = { ok: false, error: "invalid_engraving_files" }; return; }
+
     const positions: {
       productHref: string;
       productType: string;
@@ -521,7 +526,7 @@ export default {
 
     const engravingItems = positions.filter((i) => i.engraving).map((i) => i.name);
 
-    const description = buildOrderDescriptionParts({
+    let description = buildOrderDescriptionParts({
       buyerType,
       engravingItems,
       telegram,
@@ -545,6 +550,8 @@ export default {
 
     let orderRequestId: number | null = null;
     let orderCreationStarted = false;
+    let filesBound = false;
+    let bindingFiles = false;
 
     try {
       const acquireResult = await acquireOrderRequestRecord(idempotencyKey);
@@ -561,6 +568,14 @@ export default {
       }
 
       orderRequestId = acquireResult.orderRequestId;
+
+      if (engravingFiles) {
+        bindingFiles = true;
+        const links = bindEngravingFiles(engravingFiles, idempotencyKey);
+        filesBound = true;
+        bindingFiles = false;
+        description += " | " + links.join(" | ");
+      }
 
       const agentHref = await orderService.createCounterparty(name, phone);
 
@@ -587,10 +602,27 @@ export default {
         promoId: resolvedPromo !== null ? resolvedPromo.promoId : null,
       });
 
+      if (filesBound) {
+        // Bound files are already durable and linked to this request before the CRM call.
+        // A metadata failure here must never turn an accepted order into a failed checkout.
+        try { completeEngravingFiles(idempotencyKey, orderId, orderName); }
+        catch { strapi.log.error("[engraving-files] accepted order metadata needs reconciliation"); }
+      }
+
       ctx.body = { ok: true, orderId, orderName };
     } catch (err) {
       if (orderRequestId !== null && !orderCreationStarted) {
+        if (filesBound) {
+          try { releaseEngravingFiles(idempotencyKey); }
+          catch { strapi.log.error("[engraving-files] retained files after pre-order failure"); }
+        }
         await deleteOrderRequestSafely(orderRequestId);
+      }
+
+      if (bindingFiles && !orderCreationStarted) {
+        ctx.status = 409;
+        ctx.body = { ok: false, error: "engraving_files_unavailable" };
+        return;
       }
 
       if (orderCreationStarted) {
