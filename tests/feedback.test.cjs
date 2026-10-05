@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 const { randomUUID } = require('node:crypto');
 const root = path.resolve(__dirname, '..');
-const payload = () => ({ requestId: randomUUID(), message: 'Не найден размер товара', email: 'customer@example.test', page: '/support/feedback' });
+const payload = () => ({ requestId: randomUUID(), message: 'Не найден размер товара', email: 'customer@example.test', page: '/support/feedback', consent: {accepted:true,version:'2026-10-05'} });
 const plain = value => JSON.parse(JSON.stringify(value));
 function matches(row, where) {
   return Object.entries(where).every(([key, condition]) => {
@@ -102,6 +102,34 @@ test('concurrent retries create one message; altered payload using same ID confl
   const outcomes = await Promise.all([f.utils.saveFeedback(data), f.utils.saveFeedback(data)]);
   assert.deepEqual(outcomes.sort(), ['created', 'replayed']); assert.equal(f.rows.length, 1);
   assert.equal(await f.utils.saveFeedback({ ...data, message: 'другой текст' }), 'conflict');
+});
+
+test('new messages require explicit current consent, with no write or notification on refusal', async () => {
+  for (const consent of [undefined, null, [], {}, {accepted:false,version:'2026-10-05'}, {accepted:'true',version:'2026-10-05'}, {accepted:true,version:'2026-01-01'}]) {
+    const f=fixture(), c=f.ctx({...payload(),consent}); await f.controller.create(c);
+    assert.equal(c.status,400);assert.equal(c.body.error,'consent_required');assert.equal(f.rows.length,0);
+  }
+});
+
+test('receipt records server version/time/action and is not returned to client or notification worker', async () => {
+  const f=fixture(), data=payload(), c=f.ctx({...data,consent:{...data.consent,acceptedAt:'1900-01-01'}});
+  const before=Date.now(); await f.controller.create(c);
+  const receipt=f.rows[0].consentReceipt;
+  assert.equal(receipt.version,'2026-10-05');assert.equal(receipt.action,'checkbox_and_submit');
+  assert.equal(receipt.document,'/legal/consent');assert.equal(receipt.page,data.page);
+  assert.ok(Date.parse(receipt.acceptedAt)>=before);assert.ok(Date.parse(receipt.acceptedAt)<=Date.now());
+  assert.equal(f.rows[0].consentAccepted,undefined);assert.equal(c.body.consentReceipt,undefined);
+  assert.equal((await f.utils.claimFeedback()).consentReceipt,undefined);
+  assert.equal(receipt.text,'Даю согласие на обработку персональных данных для рассмотрения обращения и ответа на него.');
+});
+
+test('legacy saved request can be replayed without adding retrospective consent; changed message conflicts', async () => {
+  const f=fixture(), data=payload();await f.utils.saveFeedback(f.utils.validateFeedback(data));
+  delete f.rows[0].consentReceipt;
+  const replay=f.ctx({...data,consent:undefined});await f.controller.create(replay);
+  assert.equal(replay.body.ok,true);assert.equal(f.rows.length,1);assert.equal(f.rows[0].consentReceipt,undefined);
+  const changed=f.ctx({...data,consent:undefined,message:'Changed'});await f.controller.create(changed);
+  assert.equal(changed.status,409);assert.equal(f.rows[0].message,data.message);
 });
 test('storage failure never acknowledges acceptance or discloses raw errors', async () => {
   const f = fixture(), ctx = f.ctx(payload()); f.state.failCreate = true;

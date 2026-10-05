@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
+import { acceptedConsent, consentReceipt } from "./consent";
 
 const UID = "api::feedback.feedback" as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_ATTEMPTS = 8;
 const LEASE_MS = 90_000;
 
-type Feedback = { requestId: string; message: string; email: string | null; page: string };
+type Feedback = { requestId: string; message: string; email: string | null; page: string; consentAccepted: boolean };
 // The new content type is not in the handover's generated type snapshot yet.
 const query = () => strapi.db.query(UID as any);
 
@@ -21,16 +22,21 @@ export function validateFeedback(input: unknown): Feedback | null {
   if (email.length > 254 || (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email))) return null;
   if (typeof body.page !== "string" || body.page.length > 250 || !/^\/(?!\/)[^\s?#\\]*$/.test(body.page)) return null;
   // Store only the path; query strings can contain customer information.
-  return { requestId: body.requestId.toLowerCase(), message, email: email || null, page: body.page };
+  return { requestId: body.requestId.toLowerCase(), message, email: email || null, page: body.page, consentAccepted: acceptedConsent(body.consent) };
 }
 
-export async function saveFeedback(data: Feedback): Promise<"created" | "replayed" | "conflict"> {
+export async function saveFeedback(data: Feedback): Promise<"created" | "replayed" | "conflict" | "consent_required"> {
   const payloadHash = createHash("sha256").update(JSON.stringify([data.message, data.email, data.page])).digest("hex");
   const existing = await query().findOne({ where: { requestId: data.requestId } });
   if (existing) return existing.payloadHash === payloadHash ? "replayed" : "conflict";
+  // A retry of an already accepted legacy request still succeeds, but no new
+  // message is stored without the separate affirmative choice. No retroactive consent.
+  if (!data.consentAccepted) return "consent_required";
+  const { consentAccepted: _consentAccepted, ...messageData } = data;
   try {
     await strapi.documents(UID as any).create({ data: {
-      ...data, payloadHash, notificationStatus: "pending", attempts: 0,
+      ...messageData, payloadHash, notificationStatus: "pending", attempts: 0,
+      consentReceipt: consentReceipt(data.page),
     } as any });
     return "created";
   } catch (error) {

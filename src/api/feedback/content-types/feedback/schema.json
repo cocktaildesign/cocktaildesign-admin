@@ -16,6 +16,7 @@
       "column": { "unique": true, "notNullable": true }
     },
     "payloadHash": { "type": "string", "required": true, "private": true },
+    "consentReceipt": { "type": "json", "private": true },
     "notificationStatus": {
       "type": "enumeration", "enum": ["pending", "sending", "sent", "failed"],
       "required": true, "default": "pending"
