@@ -23,7 +23,7 @@ export type CatalogSearchCandidate = {
   hasSearchImage?: boolean;
   image?: Array<{ url?: string | null }> | null;
   category?: { moyskladId?: string | null } | null;
-  variants?: Array<{ name?: string | null; image?: Array<{ url?: string | null }> | null }>;
+  variants?: Array<{ name?: string | null; code?: string | null; image?: Array<{ url?: string | null }> | null }>;
 };
 
 const CATALOG_SEARCH_RESULT_LIMIT = 10;
@@ -141,12 +141,20 @@ function exactMatch(candidate: CatalogSearchCandidate, query: PreparedCatalogSea
   return 0;
 }
 
+/** Ignore letter case and outer whitespace, but preserve SKU separators and alphabet. */
+export function isLiteralSearchCodeMatch(code: string | null | undefined, query: PreparedCatalogSearchQuery): boolean {
+  return Boolean(query.raw && code?.trim().toLowerCase() === query.raw.toLowerCase());
+}
+
 const alphabet = new Intl.Collator("ru", { numeric: true, sensitivity: "base" });
 
 export function rankCatalogSearchCandidates(candidates: CatalogSearchCandidate[], query: PreparedCatalogSearchQuery): CatalogSearchCandidate[] {
-  return candidates.map(candidate => ({ candidate, exact: exactMatch(candidate, query), score: scoreCatalogSearchCandidate(candidate, query) }))
+  return candidates.map(candidate => ({ candidate,
+    literalCode: isLiteralSearchCodeMatch(candidate.code, query) || candidate.variants?.some(v => isLiteralSearchCodeMatch(v.code, query)) === true,
+    exact: exactMatch(candidate, query), score: scoreCatalogSearchCandidate(candidate, query) }))
     .filter(({ candidate, score }) => score > 0 && (!query.sampleSaleOnly || candidate.isSampleSale))
-    .sort((a, b) => Number(b.candidate.hasSearchImage === true) - Number(a.candidate.hasSearchImage === true) ||
+    .sort((a, b) => Number(b.literalCode) - Number(a.literalCode) ||
+      Number(b.candidate.hasSearchImage === true) - Number(a.candidate.hasSearchImage === true) ||
       b.exact - a.exact ||
       Number(a.candidate.isSampleSale === true) - Number(b.candidate.isSampleSale === true) ||
       b.score - a.score || alphabet.compare(a.candidate.name ?? "", b.candidate.name ?? "") || a.candidate.id - b.candidate.id)
