@@ -34,8 +34,8 @@ test('matching pool is not capped at 10 or 80',()=>{
  const rows=Array.from({length:127},(_,i)=>product(i+1,'Шейкер '+(i+1)));
  assert.equal(rank(rows,q('шейкер')).length,127);assert.deepEqual(ids(rank(rows,q('шейкер'))),rows.map(r=>r.id));
 });
-test('photos precede photo-less exact matches and ordinary products across the full result pool',()=>{
- const noPhoto=product(1,'Шейкер',{code:'шейкер'});
+test('photos precede photo-less exact name matches and ordinary products across the full result pool',()=>{
+ const noPhoto=product(1,'Шейкер');
  const rows=[noPhoto,...Array.from({length:23},(_,i)=>product(i+2,'Шейкер '+i,{hasSearchImage:true,isSampleSale:i>19}))];
  const ordered=rank(rows,q('шейкер'));
  assert.equal(ordered.length,24);assert.equal(ordered.at(-1).id,1);
@@ -53,7 +53,7 @@ test('candidate photo presence includes variant fallback and does not treat empt
  const rows=[product(1,'Шейкер'),product(2,'Шейкер',{image:[]}),product(3,'Шейкер',{image:[{url:'/uploads/p.webp'}]}),
  product(4,'Шейкер',{variants:[{name:'Цвет',image:[{url:'/uploads/v.webp'}]}]}),
  product(5,'Шейкер',{image:[{url:null}],variants:[{name:'Цвет',image:[]}]})];
- const stub={db:{query(){return {findMany:async()=>rows}}}};
+ const stub={db:{query(){return {findMany:async(args)=>{assert.ok(args.populate.variants.select.includes('code'));return rows}}}}};
  const result=await find(stub,q('шейкер'),new Set());
  assert.deepEqual(Array.from(result.candidates,p=>p.hasSearchImage),[false,false,true,true,false]);
  assert.deepEqual(ids(rank(result.candidates,q('шейкер'))),[3,4,1,2,5]);
@@ -63,4 +63,42 @@ test('malformed paging fails before touching database',async()=>{
  const noDB=new Proxy({}, {get(){throw Error('DB must not be queried')}});
  for(const args of [{q:'шейкер',limit:'0'},{q:'шейкер',offset:'-1'},{q:'шейкер',limit:'51'},{q:['a','b']},{q:'x'.repeat(161)},{q:'шейкер',revision:'bad'}])assert.equal((await page(noDB,args)).status,400);
  assert.equal((await page(noDB,{q:'я'})).body.total,0);
+});
+
+test('literal SKU wins for either slash direction, with all similar products retained',()=>{
+ const rows=[product(65,'Джиггер Creation без кольца',{code:'JigV25\\40',hasSearchImage:true}),
+  product(201,'Джиггер V-тип',{code:'JigV25/40',hasSearchImage:true}),
+  product(1779,'Джиггер уцененный',{code:'SMPLJigV25/40',hasSearchImage:true,isSampleSale:true})];
+ assert.deepEqual(ids(rank(rows,q('JigV25/40'))),[201,65,1779]);
+ assert.deepEqual(ids(rank(rows,q('JigV25\\40'))),[65,201,1779]);
+ assert.deepEqual(ids(rank(rows.reverse(),q('  jigv25/40  '))),[201,65,1779]);
+});
+test('literal SKU takes precedence over photo and markdown rules, even beyond the first page',()=>{
+ const rows=Array.from({length:25},(_,i)=>product(i+1,'Джиггер '+i,{code:'ALT-'+i+'-JIG25/40',hasSearchImage:true}));
+ const exact=product(100,'Джиггер уцененный',{code:'JIG25/40',isSampleSale:true});
+ const result=rank([...rows,exact],q('JIG25/40'));
+ assert.equal(result[0].id,100);assert.equal(new Set(ids(result)).size,26);
+ assert.deepEqual(ids(result.slice(1)),ids(rank(rows,q('JIG25/40'))));
+});
+test('literal SKU preserves punctuation, internal spaces and Latin/Cyrillic distinctions',()=>{
+ const rows=[product(1,'А',{code:'AB12'}),product(2,'Б',{code:'AB-12'}),product(3,'В',{code:'AB 12'}),product(4,'Г',{code:'АВ12'})];
+ for(const [query,id] of [['AB12',1],['AB-12',2],['AB 12',3],['АВ12',4]]){
+  const result=rank(rows,q(query));assert.equal(result[0].id,id);assert.equal(result.length,4);
+ }
+});
+test('a literal variant SKU ranks ahead of a normalized parent SKU',()=>{
+ const rows=[product(1,'А',{code:'JIG25\\40',hasSearchImage:true}),
+  product(2,'Б',{variants:[{name:'Б вариант',code:'JIG25/40'}]})];
+ assert.deepEqual(ids(rank(rows,q('JIG25/40'))),[2,1]);
+});
+test('the response shows the literal variant with its own ID and price, retaining fuzzy fallback',()=>{
+ const {mapCatalogSearchV2Rows:map}=load('src/utils/catalog-search-v2-response');
+ const variants=[{id:10,name:'Без кольца',code:'JIG25\\40',price:600},
+  {id:11,name:'С кольцом',code:'JIG25/40',price:650}];
+ const row={id:1,name:'Джиггер',code:'PARENT',variants};
+ const read=(code,p=row)=>map([p],q(code),{noveltyDays:30,noveltyBadgeColor:'#00ff00'},new Set())[0].attributes;
+ assert.equal(read('JIG25/40').matchedVariant.id,11);assert.equal(read('JIG25/40').matchedVariant.price,650);
+ assert.equal(read('JIG25\\40').matchedVariant.id,10);
+ assert.equal(read('JIG2540').matchedVariant.id,10);
+ assert.equal(read('JIG25/40',{...row,code:'JIG25/40',variants:[variants[0]]}).matchedVariant,null);
 });

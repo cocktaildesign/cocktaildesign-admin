@@ -5,6 +5,7 @@ import type {
 } from "./catalog-search-v2-results";
 import {
   containsAllSearchTokens,
+  isLiteralSearchCodeMatch,
   type PreparedCatalogSearchQuery,
 } from "./catalog-search-v2";
 import { mapProductBadges } from "./product-badges";
@@ -155,6 +156,11 @@ function findMatchedVariant(
   if (variants.length === 0) {
     return null;
   }
+
+  const literalVariant = variants.find((variant) => isLiteralSearchCodeMatch(variant.code, query));
+  if (literalVariant) return literalVariant;
+  // A similar variant must not replace a literally matched parent in the displayed result.
+  if (isLiteralSearchCodeMatch(product.code, query)) return null;
 
   const exactVariant = variants.find((variant) => isExactVariant(variant, query));
 

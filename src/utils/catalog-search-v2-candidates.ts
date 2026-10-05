@@ -19,7 +19,7 @@ export async function findCatalogSearchCandidates(strapi: Core.Strapi, query: Pr
     populate: {
       image: { select: ["url"] },
       category: { select: ["moyskladId"] },
-      variants: { select: ["name"], populate: { image: { select: ["url"] } }, orderBy: { id: "asc" } },
+      variants: { select: ["name", "code"], populate: { image: { select: ["url"] } }, orderBy: { id: "asc" } },
     },
     orderBy: { id: "asc" },
   }) as CatalogSearchCandidate[];
