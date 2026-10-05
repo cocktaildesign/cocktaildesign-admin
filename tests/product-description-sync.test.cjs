@@ -59,3 +59,15 @@ test('ordinary product and bundle still take exact CRM description',async()=>{
  for(const bundle of [false,true]){const h=harness();const e=entity('A','ordinary');if(bundle)await h.service.syncOneBundleFromWebhook(e);else await h.service.syncOneFromWebhook(e);assert.equal(h.rows[0].description,text);}
  const h=harness();h.setSource([entity('A','ordinary')],[entity('B','ordinary')]);await h.service.syncAllUnlocked();assert(h.writes.every(w=>w.data.description===text));
 });
+
+test('editorial bundle visibility survives webhook and full product synchronization', async()=>{
+ for (const mode of ['webhook-product','webhook-bundle','full']) {
+  const h=harness();h.rows[0].hideBundleContents=true;
+  const e=entity('A','ordinary');
+  if(mode==='webhook-product')await h.service.syncOneFromWebhook(e);
+  else if(mode==='webhook-bundle')await h.service.syncOneBundleFromWebhook(e);
+  else {h.setSource([e],[entity('B','ordinary')]);await h.service.syncAllUnlocked();}
+  assert.equal(h.rows[0].hideBundleContents,true);
+  assert(h.writes.every(w=>!Object.hasOwn(w.data,'hideBundleContents')));
+ }
+});

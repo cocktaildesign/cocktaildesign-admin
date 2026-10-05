@@ -1,5 +1,6 @@
 //backend/src/api/moysklad-category/controllers/moysklad-category.ts
 import { factories } from "@strapi/strapi";
+import { presentBundleItems } from "../../../utils/bundle-presentation";
 import { getStorefrontVisibleProductFilter } from "../../../utils/storefront-product-visibility";
 import { getCatalogSearchPage } from "../../../utils/catalog-search-v2-page";
 import { getNewCollectionPhotoPage } from "../../../utils/new-collection-photo-order";
@@ -226,6 +227,7 @@ type ProductRow = {
   discountExcluded?: boolean | null;
   // Состав/комплектация — каждая строка = пункт списка на фронте
   composition?: string | null;
+  hideBundleContents?: boolean | null;
   // Флаг — товар скрыт с сайта (менеджер выключил его в Strapi)
   isHiddenOnSite?: boolean | null;
   image?: unknown;
@@ -928,6 +930,7 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
         "code",
         "discountExcluded",
         "composition",
+        "hideBundleContents",
         "moyskladNoveltyAt",
       ],
       populate: {
@@ -948,10 +951,15 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
           orderBy: { id: "asc" },
         },
         bundleItems: {
+          orderBy: [{ position: "asc" }, { id: "asc" }],
           populate: {
             componentProduct: {
-              select: ["id", "name", "slug", "price"],
+              select: ["id", "name", "slug", "price", "isHiddenOnSite", "isOutOfStock"],
               populate: { image: { select: ["url", "alternativeText", "formats"] } },
+            },
+            componentVariant: {
+              select: ["id", "name", "price"],
+              populate: { image: { select: ["url", "formats"] }, product: { select: ["id"] } },
             },
           },
         },
@@ -1022,31 +1030,7 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
       };
     });
 
-    const bundleItems = ((product as any).bundleItems ?? []).map((item: any) => {
-      const cp = item.componentProduct ?? null;
-      const firstImage = Array.isArray(cp?.image) ? cp.image[0] : null;
-      const imagePath =
-        firstImage?.formats?.large?.url ??
-        firstImage?.formats?.medium?.url ??
-        firstImage?.formats?.small?.url ??
-        firstImage?.formats?.thumbnail?.url ??
-        firstImage?.url ??
-        null;
-
-      return {
-        id: item.id,
-        quantity: item.quantity ?? 1,
-        componentProduct: cp
-          ? {
-              id: cp.id,
-              name: cp.name ?? null,
-              slug: cp.slug ?? null,
-              price: cp.price ?? null,
-              imageUrl: imagePath ?? null,
-            }
-          : null,
-      };
-    });
+    const bundleItems = presentBundleItems((product as any).bundleItems ?? [], product.hideBundleContents === true);
 
     const noveltyConfig = await getProductNoveltyConfig(strapi);
 
@@ -1061,6 +1045,7 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
           priceOld: product.priceOld ?? null,
           description: product.description ?? null,
           composition: product.composition ?? null,
+          hideBundleContents: product.hideBundleContents === true,
           image: Array.isArray((product as any).image) ? (product as any).image : [],
           specifications,
           engravingEnabled: product.engravingEnabled ?? false,

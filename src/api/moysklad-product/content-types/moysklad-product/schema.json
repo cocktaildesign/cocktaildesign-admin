@@ -40,6 +40,10 @@
     "composition": {
       "type": "text"
     },
+    "hideBundleContents": {
+      "type": "boolean",
+      "default": false
+    },
     "engravingEnabled": {
       "type": "boolean",
       "default": false
@@ -155,6 +159,12 @@
   },
   "config": {
     "metadatas": {
+      "hideBundleContents": {
+        "edit": {
+          "label": "Скрыть состав комплекта на сайте",
+          "description": "Скрывает список и карточки составляющих. Сам товар продаётся целиком; состав и учёт в МойСклад не меняются. Например, для дропперов."
+        }
+      },
       "searchText": {
         "edit": {
           "label": "Поисковый текст",

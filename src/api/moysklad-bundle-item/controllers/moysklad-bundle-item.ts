@@ -3,6 +3,7 @@
 import { factories } from "@strapi/strapi";
 import type { Context } from "koa";
 import { syncBundleItemsForBundle } from "../services/sync";
+import { enqueueMoySkladMutation } from "../../../utils/moysklad-mutation-queue";
 
 export default factories.createCoreController("api::moysklad-bundle-item.moysklad-bundle-item", () => ({
   async syncOne(ctx: Context) {
@@ -23,7 +24,7 @@ export default factories.createCoreController("api::moysklad-bundle-item.moyskla
     }
 
     try {
-      const result = await syncBundleItemsForBundle(bundleMsId);
+      const result = await enqueueMoySkladMutation("products", () => syncBundleItemsForBundle(bundleMsId));
       ctx.body = result;
     } catch (err) {
       strapi.log.error(err);
