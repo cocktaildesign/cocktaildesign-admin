@@ -21,6 +21,20 @@
       "default": 1,
       "min": 0
     },
+    "componentName": {
+      "type": "text"
+    },
+    "componentType": {
+      "type": "string"
+    },
+    "position": {
+      "type": "integer"
+    },
+    "componentVariant": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::moysklad-variant.moysklad-variant"
+    },
     "componentProduct": {
       "type": "relation",
       "relation": "manyToOne",
