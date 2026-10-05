@@ -54,6 +54,7 @@ export default {
     if (!data) return fail(ctx, 400, "invalid_payload");
     try {
       const result = await saveFeedback(data);
+      if (result === "consent_required") return fail(ctx, 400, "consent_required");
       if (result === "conflict") return fail(ctx, 409, "request_conflict");
       ctx.status = result === "created" ? 201 : 200;
       ctx.body = { ok: true, requestId: data.requestId };
