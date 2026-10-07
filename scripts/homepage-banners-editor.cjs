@@ -14,12 +14,14 @@ module.exports = async function configureHomepageBanners(strapi) {
     const next = structuredClone(before);
     const schema = uid.startsWith('api::') ? strapi.contentTypes[uid] : strapi.components[uid];
     for (const [field, metadata] of Object.entries(schema.config.metadatas)) {
+      next.metadatas[field] ??= {edit: {}, list: {label: field, searchable: false, sortable: false}};
       next.metadatas[field].edit = {...next.metadatas[field].edit, ...metadata.edit};
     }
     if (serviceName === 'components') {
       next.settings.mainField = 'title';
-      next.layouts.edit = ['title', 'desktopImage', 'mobileImage', 'href', 'isActive']
-        .map(name => [{name, size:12}]);
+      next.layouts.edit = (uid === 'homepage.hero-banner'
+        ? ['title', 'useTextLayout', 'heading', 'description', 'buttonLabel', 'note', 'productImage', 'href', 'isActive', 'desktopImage', 'mobileImage']
+        : ['title', 'desktopImage', 'mobileImage', 'href', 'isActive']).map(name => [{name, size:12}]);
     } else {
       const oldRows = next.layouts.edit.map(row => row.filter(field => !['heroBanners','promoBanners'].includes(field.name))).filter(row => row.length);
       next.layouts.edit = [[{name:'heroBanners',size:12}], [{name:'promoBanners',size:12}], ...oldRows];
