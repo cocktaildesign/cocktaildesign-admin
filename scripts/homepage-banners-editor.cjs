@@ -19,9 +19,7 @@ module.exports = async function configureHomepageBanners(strapi) {
     }
     if (serviceName === 'components') {
       next.settings.mainField = 'title';
-      next.layouts.edit = (uid === 'homepage.hero-banner'
-        ? ['title', 'useTextLayout', 'heading', 'description', 'buttonLabel', 'note', 'productImage', 'href', 'isActive', 'desktopImage', 'mobileImage']
-        : ['title', 'desktopImage', 'mobileImage', 'href', 'isActive']).map(name => [{name, size:12}]);
+      next.layouts.edit = (['title', 'useTextLayout', 'heading', 'description', 'buttonLabel', 'note', 'productImage', 'href', 'isActive', 'desktopImage', 'mobileImage']).map(name => [{name, size:12}]);
     } else {
       const oldRows = next.layouts.edit.map(row => row.filter(field => !['heroBanners','promoBanners'].includes(field.name))).filter(row => row.length);
       next.layouts.edit = [[{name:'heroBanners',size:12}], [{name:'promoBanners',size:12}], ...oldRows];

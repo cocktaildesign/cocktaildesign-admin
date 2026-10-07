@@ -10,6 +10,16 @@ test('published legacy and editorial slides validate only their chosen media',as
  assert.equal(await validate({heroBanners:[editorial]}),'passed');
  assert.equal(await validate({heroBanners:[legacy]}),'passed');
  assert.equal(await validate({heroBanners:[{...editorial,href:'',buttonLabel:''}]}),'passed');
+ assert.equal(await validate({promoBanners:[editorial]}),'passed');
+});
+
+test('promo editorial drafts and publications validate their photo, heading and button',async()=>{
+ const validate=fixture({heroBanners:[editorial],promoBanners:[editorial]});
+ for(const change of [{heading:''},{buttonLabel:''},{productImage:null}]){
+  assert.equal(await validate({promoBanners:[{...editorial,...change}]},'update'),'passed');
+  await assert.rejects(validate({promoBanners:[{...editorial,...change}]}));
+ }
+ await assert.rejects(validate({promoBanners:[{...legacy,mobileImage:null}]}));
 });
 test('incomplete drafts remain editable; publish prevents missing photo/headline/button',async()=>{
  const validate=fixture({heroBanners:[editorial]});
