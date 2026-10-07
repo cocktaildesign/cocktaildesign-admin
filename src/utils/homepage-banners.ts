@@ -3,7 +3,7 @@ import { errors } from "@strapi/utils";
 
 const UID = "api::homepage.homepage";
 const groups = { heroBanners: "Верхние баннеры", promoBanners: "Нижние баннеры" };
-const populate = { heroBanners: { populate: ["desktopImage", "mobileImage", "productImage"] }, promoBanners: { populate: ["desktopImage", "mobileImage"] } };
+const populate = { heroBanners: { populate: ["desktopImage", "mobileImage", "productImage"] }, promoBanners: { populate: ["desktopImage", "mobileImage", "productImage"] } };
 
 // Strapi's native required-media check does not cover repeatable components on publish.
 // Keep incomplete drafts editable, but prevent broken slides from reaching the storefront.
@@ -24,7 +24,7 @@ export function registerHomepageBannerValidation(strapi: Core.Strapi) {
         const prefix = `${label}, баннер ${index + 1}`;
         if (!slide.title || typeof slide.title !== "string" || !slide.title.trim()) throw new errors.ValidationError(`${prefix}: укажите название.`);
         if (slide.href && (typeof slide.href !== "string" || !/^(?:\/(?!\/)[^\\\s]*|https:\/\/[^\\\s]+)$/.test(slide.href))) throw new errors.ValidationError(`${prefix}: ссылка должна начинаться с / или https://.`);
-        const editorial = field === "heroBanners" && slide.useTextLayout === true;
+        const editorial = slide.useTextLayout === true;
         if (editorial && (typeof slide.heading !== "string" || !slide.heading.trim())) throw new errors.ValidationError(`${prefix}: заполните заголовок для режима с отдельным текстом.`);
         if (editorial && slide.href && (typeof slide.buttonLabel !== "string" || !slide.buttonLabel.trim())) throw new errors.ValidationError(`${prefix}: заполните надпись на кнопке.`);
         for (const image of editorial ? ["productImage"] : ["desktopImage", "mobileImage"]) {
