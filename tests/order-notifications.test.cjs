@@ -18,7 +18,8 @@ test('notification uses CRM total, labels original prices, includes options and 
  assert.match(result,/<b>Новый заказ №TEST-17<\/b>/);assert.match(result,/2 × 450 ₽ = 900 ₽/);
  assert.match(result,/Скидка: 10%/);assert.match(result,/Артикул: Jig20\\40/);assert.match(result,/Объём: 20\/40 мл/);
  assert.match(result,/Сумма заказа: 1\s710 ₽/);assert.match(result,/Скидка по заказу: 190 ₽/);
- assert.match(result,/НДС 5%/);assert.match(result,/Гравировка: Джиггер/);assert.match(result,/Юрлицо/);assert.match(result,/не подтверждение оплаты/);
+ assert.doesNotMatch(result,/НДС|не подтверждение оплаты/);assert.match(result,/Гравировка: Джиггер/);assert.match(result,/Юрлицо/);
+ assert.match(result,/Источник: new\.cocktaildesign\.ru/);
 });
 test('HTML injection in products, contact fields, comment and order name is escaped',()=>{
  const order=snapshot();order.name='<x>&';order.agent.name='<b>Buyer</b>';order.description='<a href="https://bad.test">click</a>';
