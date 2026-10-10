@@ -36,12 +36,11 @@ export function formatOrder(order: any, positions: any[]): string[] {
   const totals = ["", `Товары до скидок: ${money(gross)}`];
   if (gross > order.sum) totals.push(`Скидка по заказу: ${money(gross - order.sum)}`);
   totals.push(`<b>Сумма заказа: ${money(order.sum)}</b>`);
-  if (order.vatEnabled && order.vatIncluded && positions.every(p => p.vat === 5)) totals.push("В том числе НДС 5%.");
   blocks.push(totals);
   blocks.push(["", "<b>Покупатель</b>", ...field("Имя: ", order.agent?.name), ...field("Телефон: ", order.agent?.phone),
     ...field("Email: ", order.agent?.email), ...field("Адрес: ", order.shipmentAddress)]);
   if (clean(order.description)) blocks.push(["", "<b>Детали заказа</b>", ...clean(order.description).split(" | ").flatMap(part => field("", part))]);
-  blocks.push(["", "Источник: new.cocktaildesign.ru", "Уведомление о заказе, не подтверждение оплаты."]);
+  blocks.push(["", "Источник: new.cocktaildesign.ru"]);
 
   // Keep ordinary product blocks together, splitting exceptionally long fields at safe HTML boundaries.
   const bodies: string[] = []; let body = "";
