@@ -42,6 +42,14 @@
     "typescript": "^5",
     "vite": "6.4.3"
   },
+  "overrides": {
+    "@strapi/provider-email-sendmail": {
+      "nodemailer": "10.0.9"
+    },
+    "@strapi/content-manager": {
+      "markdown-it": "14.3.3"
+    }
+  },
   "engines": {
     "node": ">=20.0.0 <=24.x.x",
     "npm": ">=6.0.0"
