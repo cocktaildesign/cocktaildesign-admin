@@ -2,6 +2,7 @@ import {
   normalizeSearchCode,
   normalizeSearchText,
 } from "./product-search-index";
+import { isSearchSaleWord, prepareSearchInterpretations, searchLanguageQuality, searchNamePosition, swapSearchLayout, type SearchInterpretation } from "./catalog-search-language";
 
 export type PreparedCatalogSearchQuery = {
   raw: string;
@@ -11,6 +12,8 @@ export type PreparedCatalogSearchQuery = {
   exactCodeNeedle: string;
   isValid: boolean;
   sampleSaleOnly: boolean;
+  interpretations: SearchInterpretation[];
+  allowTypos: boolean;
 };
 
 export type CatalogSearchCandidate = {
@@ -49,9 +52,10 @@ export function prepareCatalogSearchQuery(value: unknown): PreparedCatalogSearch
   const normalizedText = normalizeSearchText(raw);
   const normalizedCode = normalizeSearchCode(raw);
   const allTokens = uniqueTokensInOrder(normalizedText.split(" ").filter(Boolean));
-  const saleWord = /^уцен(?:ка|ки|ке|ку|кой|енный|енная|енное|енные|енных)$/;
-  const sampleSaleOnly = allTokens.some(token => saleWord.test(token));
-  const tokens = allTokens.filter(token => !saleWord.test(token));
+  const layoutTokens = normalizeSearchText(swapSearchLayout(raw)).split(" ");
+  const sampleSaleOnly = allTokens.some(isSearchSaleWord) || layoutTokens.some(isSearchSaleWord);
+  const effectiveTokens = !allTokens.some(isSearchSaleWord) && layoutTokens.some(isSearchSaleWord) ? layoutTokens : allTokens;
+  const tokens = effectiveTokens.filter(token => !isSearchSaleWord(token));
   const exactCodeNeedle = normalizedCode ? `|${normalizedCode}|` : "";
   const isValid =
     raw.length >= 2 && raw.length <= 160 && (normalizedText.length > 0 || normalizedCode.length > 0);
@@ -64,7 +68,17 @@ export function prepareCatalogSearchQuery(value: unknown): PreparedCatalogSearch
     exactCodeNeedle,
     isValid,
     sampleSaleOnly,
+    interpretations: prepareSearchInterpretations(raw),
+    allowTypos: false,
   };
+}
+
+export function catalogCandidateLanguageQuality(candidate: CatalogSearchCandidate, query: PreparedCatalogSearchQuery): number {
+  // Codes deliberately excluded: "pin" is not a word match for "LeafPink100".
+  const name = candidate.name ?? "";
+  const parent = searchLanguageQuality(name, query.interpretations, query.allowTypos);
+  return Math.max(parent ? parent * 10 + 1 : 0,
+    ...(candidate.variants ?? []).map(v => searchLanguageQuality(name + " " + (v.name ?? ""), query.interpretations, query.allowTypos) * 10));
 }
 
 export function containsAllSearchTokens(
@@ -130,7 +144,7 @@ export function scoreCatalogSearchCandidate(
     score += 100;
   }
 
-  return score;
+  return score + (catalogCandidateLanguageQuality(candidate, query) > 0 ? searchNamePosition(candidate.name ?? "", query.interpretations) : 0);
 }
 
 function exactMatch(candidate: CatalogSearchCandidate, query: PreparedCatalogSearchQuery): number {
@@ -151,11 +165,13 @@ const alphabet = new Intl.Collator("ru", { numeric: true, sensitivity: "base" })
 export function rankCatalogSearchCandidates(candidates: CatalogSearchCandidate[], query: PreparedCatalogSearchQuery): CatalogSearchCandidate[] {
   return candidates.map(candidate => ({ candidate,
     literalCode: isLiteralSearchCodeMatch(candidate.code, query) || candidate.variants?.some(v => isLiteralSearchCodeMatch(v.code, query)) === true,
-    exact: exactMatch(candidate, query), score: scoreCatalogSearchCandidate(candidate, query) }))
-    .filter(({ candidate, score }) => score > 0 && (!query.sampleSaleOnly || candidate.isSampleSale))
+    exact: exactMatch(candidate, query), score: scoreCatalogSearchCandidate(candidate, query),
+    language: catalogCandidateLanguageQuality(candidate, query) }))
+    .filter(({ candidate, score, language }) => (score > 0 || language > 0) && (!query.sampleSaleOnly || candidate.isSampleSale))
     .sort((a, b) => Number(b.literalCode) - Number(a.literalCode) ||
       Number(b.candidate.hasSearchImage === true) - Number(a.candidate.hasSearchImage === true) ||
       b.exact - a.exact ||
+      b.language - a.language ||
       Number(a.candidate.isSampleSale === true) - Number(b.candidate.isSampleSale === true) ||
       b.score - a.score || alphabet.compare(a.candidate.name ?? "", b.candidate.name ?? "") || a.candidate.id - b.candidate.id)
     .map(({ candidate }) => candidate);
