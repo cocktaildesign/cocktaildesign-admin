@@ -15,6 +15,7 @@ import {
   normalizeSearchCode,
   normalizeSearchText,
 } from "./product-search-index";
+import { searchLanguageQuality } from "./catalog-search-language";
 
 const UTSENKA_CATEGORY_LABEL = "Уценка";
 
@@ -167,6 +168,13 @@ function findMatchedVariant(
   if (exactVariant) {
     return exactVariant;
   }
+
+  const parentQuality = searchLanguageQuality(product.name ?? "", query.interpretations, query.allowTypos);
+  const languageVariants = variants.map(variant => ({ variant, quality: searchLanguageQuality(
+    (product.name ?? "") + " " + (variant.name ?? ""), query.interpretations, query.allowTypos,
+  ) })).sort((a, b) => b.quality - a.quality);
+  if (languageVariants[0]?.quality > parentQuality) return languageVariants[0].variant;
+  if (parentQuality > 0) return null;
 
   if (isParentMatched(product, query)) {
     return null;
