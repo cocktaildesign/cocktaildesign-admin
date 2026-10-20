@@ -35,9 +35,11 @@ export async function hideUnavailableSampleSale(
         : states.get(product.moyskladId) === true;
     }).map((product: any) => product.id);
     if (!ids.length) return 0;
-    // One atomic statement, repeating the scope in case a manager edited a row.
+    // Bulk updates in Strapi do not support relation filters. IDs come only from
+    // the scoped read; the timestamp guard rejects later product/category edits.
+    const { category: _category, ...updateScope } = scope;
     const result = await app.db.query(PRODUCT).updateMany({
-      where: { ...scope, id: { $in: ids } }, data: { isOutOfStock: true },
+      where: { ...updateScope, id: { $in: ids } }, data: { isOutOfStock: true },
     });
     return result.count;
   });

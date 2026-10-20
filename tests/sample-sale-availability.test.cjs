@@ -26,7 +26,8 @@ test('only confirmed empty items, including all-empty variants; unknown and posi
  assert.deepEqual([...h.writes[0].where.id.$in],[1,6]);
  assert.deepEqual(JSON.parse(JSON.stringify(h.writes[0].data)),{isOutOfStock:true});
  assert.equal(h.writes[0].where.updatedAt.$lte,started);
- assert.deepEqual([...h.writes[0].where.category.moyskladId.$in],['sale','child']);
+ assert.deepEqual([...h.queries[0].where.category.moyskladId.$in],['sale','child']);
+ assert.equal(h.writes[0].where.category,undefined);
  assert.equal(h.writes[0].where.type,'product');assert.equal(h.serial.length,1);
 });
 test('sync lock, missing category tree, empty matches perform no writes',async()=>{
