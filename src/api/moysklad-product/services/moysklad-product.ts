@@ -686,7 +686,7 @@ export default factories.createCoreService("api::moysklad-product.moysklad-produ
 
       // Архивный товар недоступен независимо от остатка.
       const hidden =
-        buildSampleSaleStockFields(stockItem.stock).isOutOfStock || entity.archived === true;
+        buildSampleSaleStockFields(stockItem.stock, stockItem.quantity).isOutOfStock || entity.archived === true;
       const stockFields = { moyskladStock: stockItem.stock, isOutOfStock: hidden };
 
       if (!existing) {
@@ -1145,7 +1145,7 @@ export default factories.createCoreService("api::moysklad-product.moysklad-produ
 
           const stock = stockRow.stock;
           // Архивный товар недоступен независимо от остатка.
-          const hidden = buildSampleSaleStockFields(stock).isOutOfStock || p.archived === true;
+          const hidden = buildSampleSaleStockFields(stock, stockRow.quantity).isOutOfStock || p.archived === true;
           const stockFields = { moyskladStock: stock, isOutOfStock: hidden };
           const wasOutOfStock = existingByMsId.get(p.id)?.isOutOfStock === true;
 
