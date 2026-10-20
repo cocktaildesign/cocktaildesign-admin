@@ -39,7 +39,8 @@ export async function hideUnavailableSampleSale(
     // the scoped read; the timestamp guard rejects later product/category edits.
     const { category: _category, ...updateScope } = scope;
     const result = await app.db.query(PRODUCT).updateMany({
-      where: { ...updateScope, id: { $in: ids } }, data: { isOutOfStock: true },
+      where: { ...updateScope, id: { $in: ids } },
+      data: { isOutOfStock: true, updatedAt: new Date().toISOString() },
     });
     return result.count;
   });

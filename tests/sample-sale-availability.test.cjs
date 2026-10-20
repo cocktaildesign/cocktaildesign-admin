@@ -24,7 +24,9 @@ test('only confirmed empty items, including all-empty variants; unknown and posi
  const started='2026-10-20T11:00:00.000Z';
  assert.equal(await h.hideUnavailableSampleSale(h.app,new Map([['empty',true],['positive',false],['parent',true]]),started),2);
  assert.deepEqual([...h.writes[0].where.id.$in],[1,6]);
- assert.deepEqual(JSON.parse(JSON.stringify(h.writes[0].data)),{isOutOfStock:true});
+ assert.equal(h.writes[0].data.isOutOfStock,true);
+ assert.deepEqual(Object.keys(h.writes[0].data).sort(),['isOutOfStock','updatedAt']);
+ assert.ok(Number.isFinite(Date.parse(h.writes[0].data.updatedAt)));
  assert.equal(h.writes[0].where.updatedAt.$lte,started);
  assert.deepEqual([...h.queries[0].where.category.moyskladId.$in],['sale','child']);
  assert.equal(h.writes[0].where.category,undefined);
