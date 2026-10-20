@@ -236,7 +236,7 @@ function normalizeAssortmentRow(row: MoySkladAssortmentRow): SampleSaleAssortmen
     type: toNullableString(row.meta?.type),
     productFolderId: pickIdFromHref(row.productFolder?.meta?.href),
     stock: toStockValue(row.stock),
-    quantity: toNullableNumber(row.quantity),
+    quantity: toStockValue(row.quantity),
     reserve: toNullableNumber(row.reserve),
     archived: toNullableBoolean(row.archived),
     variantsCount: toNullableNumber(row.variantsCount),
@@ -368,11 +368,11 @@ async function fetchAssortmentForFolder(
 }
 
 /**
- * Флаг отсутствия по физическому stock.
- * null или <= 0 → нет в наличии. quantity и reserve не участвуют.
+ * Уценка скрывается при отсутствии физического или свободного остатка.
+ * Старые ответы без quantity сохраняют прежнее правило по stock.
  */
-export function resolveSampleSaleIsOutOfStock(stock: number | null): boolean {
-  return stock === null || stock <= 0;
+export function resolveSampleSaleIsOutOfStock(stock: number | null, quantity?: number | null): boolean {
+  return stock === null || stock <= 0 || (quantity != null && quantity <= 0);
 }
 
 /** Принадлежность именно корневой папке Sample Sale (точный ID). */
@@ -590,6 +590,10 @@ export function buildSampleSaleStrapiCategoryIdSet(
  * строку "0" в число не превращаем.
  */
 export function assertValidSampleSaleStock(item: SampleSaleAssortmentItem): void {
+  if (item.quantity != null &&
+      (typeof item.quantity !== "number" || !Number.isFinite(item.quantity))) {
+    throw new Error(`MoySklad sample-sale invalid quantity for ${item.moyskladId}`);
+  }
   const stock: unknown = item.stock;
 
   if (stock === null) {
@@ -604,13 +608,13 @@ export function assertValidSampleSaleStock(item: SampleSaleAssortmentItem): void
 }
 
 /** Системные поля остатка для записи в Strapi. */
-export function buildSampleSaleStockFields(stock: number | null): {
+export function buildSampleSaleStockFields(stock: number | null, quantity?: number | null): {
   moyskladStock: number | null;
   isOutOfStock: boolean;
 } {
   return {
     moyskladStock: stock,
-    isOutOfStock: resolveSampleSaleIsOutOfStock(stock),
+    isOutOfStock: resolveSampleSaleIsOutOfStock(stock, quantity),
   };
 }
 
