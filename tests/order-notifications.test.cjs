@@ -13,6 +13,14 @@ function loader(globals={}) {
 const format=loader()('src/api/order-notification/utils/format').formatOrder;
 const snapshot=()=>({id:randomUUID(),name:'TEST-17',sum:171000,vatEnabled:true,vatIncluded:true,agent:{name:'Тестовый покупатель',phone:'0000000000'},shipmentAddress:'Тестовый адрес',description:'Юрлицо | Telegram: @example | ИНН: 000000000000 | Гравировка: Джиггер | Промокод TEST: 10% | Комментарий: тест'});
 const positions=()=>[{quantity:2,price:45000,discount:10,vat:5,assortment:{name:'Джиггер',code:'Jig20\\40',characteristics:[{name:'Объём',value:'20/40 мл'}]}},{quantity:1,price:100000,discount:10,vat:5,assortment:{name:'Шейкер',code:'Sh01'}}];
+
+test('launch source changes only with the configured canonical storefront; arbitrary values cannot enter messages',()=>{
+ for(const [url,expected] of [['https://cocktaildesign.ru','cocktaildesign.ru'],['https://new.cocktaildesign.ru','new.cocktaildesign.ru'],['https://untrusted.invalid/<b>','new.cocktaildesign.ru']]){
+  const formatter=loader({process:{env:{ORDER_STOREFRONT_URL:url}}})('src/api/order-notification/utils/format').formatOrder;
+  const messages=formatter(snapshot(),positions()).join('\n');
+  assert(messages.includes('Источник: '+expected));assert(!messages.includes('untrusted.invalid'));
+ }
+});
 test('notification uses CRM total, labels original prices, includes options and buyer details',()=>{
  const result=format(snapshot(),positions()).join('\n');
  assert.match(result,/<b>Новый заказ №TEST-17<\/b>/);assert.match(result,/2 × 450 ₽ = 900 ₽/);
