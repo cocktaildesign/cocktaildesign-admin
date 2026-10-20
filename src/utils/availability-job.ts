@@ -1,5 +1,6 @@
 import { AVAILABILITY_STORE, parseAvailabilitySnapshot, readMoySkladAvailability, type AvailabilitySnapshot } from "./moysklad-availability";
 import { getStorefrontVisibleProductFilter } from "./storefront-product-visibility";
+import { hideUnavailableSampleSale } from "./sample-sale-availability";
 
 const INTERVAL = 5 * 60_000;
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -30,7 +31,10 @@ export async function refreshAvailability(app: any) {
   try {
     const sync = await app.store({ type: "plugin", name: "moysklad", key: "syncState" }).get();
     if (sync?.lock?.isLocked) return; // Do not add CRM requests during a full catalog sync.
+    const readStartedAt = new Date().toISOString();
     const states = await readMoySkladAvailability(process.env.MOYSKLAD_ACCESS_TOKEN ?? "");
+    const hidden = await hideUnavailableSampleSale(app, states, readStartedAt);
+    if (hidden) app.log.info(`[availability] Hidden ${hidden} unavailable Sample Sale products`);
     const products = await app.db.query("api::moysklad-product.moysklad-product").findMany({
       where: getStorefrontVisibleProductFilter(), select: ["moyskladId"],
       populate: { variants: { select: ["moyskladId"] } },

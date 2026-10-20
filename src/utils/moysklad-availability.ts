@@ -1,4 +1,4 @@
-// Visual availability only. Never changes product flags, prices or order eligibility.
+// Complete read-only CRM snapshot. The job uses it for badges and Sample Sale hiding.
 export type AvailabilitySnapshot = {
   version: 1;
   updatedAt: string;

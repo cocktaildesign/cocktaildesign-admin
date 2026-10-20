@@ -5,17 +5,17 @@ const page=(rows,size=rows.length,offset=0)=>({meta:{size,offset},rows});
 function harness(){
  const env={MOYSKLAD_AVAILABILITY_ENABLED:'true',MOYSKLAD_ACCESS_TOKEN:'test-only'};
  const cache=new Map(),calls=[];let response=page([row(1)]),failWrite=false;
- const values=new Map(),products=[{moyskladId:id(1),variants:[]}],logs=[];
+ const values=new Map(),products=[{moyskladId:id(1),variants:[]}],logs=[],hides=[];
  const fetcher=async(url,options)=>{calls.push({url,options});if(response instanceof Error)throw response;return {ok:true,json:async()=>response}};
  function load(file){file=path.resolve(__dirname,'..',file.endsWith('.ts')?file:file+'.ts');if(cache.has(file))return cache.get(file).exports;
   const module={exports:{}};cache.set(file,module);
   const code=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
-  vm.runInNewContext(code,{module,exports:module.exports,require:n=>load(path.resolve(path.dirname(file),n)),process:{env},fetch:fetcher,URLSearchParams,AbortSignal,setTimeout,clearTimeout,console},{filename:file});return module.exports;
+  vm.runInNewContext(code,{module,exports:module.exports,require:n=>n.endsWith('sample-sale-availability')?{hideUnavailableSampleSale:async(app,states,started)=>{hides.push({states,started});return 0}}:load(path.resolve(path.dirname(file),n)),process:{env},fetch:fetcher,URLSearchParams,AbortSignal,setTimeout,clearTimeout,console},{filename:file});return module.exports;
  }
  const app={store:cfg=>({get:async()=>values.get(cfg.key),set:async({value})=>{assert.equal(cfg.key,'availability-v1');if(failWrite)throw Error('disk');values.set(cfg.key,value)}}),
   db:{query:uid=>{assert.equal(uid,'api::moysklad-product.moysklad-product');return {findMany:async opts=>{assert.ok(opts.where.$and);return products}}}},
   log:{info:x=>logs.push(x),warn:x=>logs.push(x)}};
- return {env,load,app,values,products,calls,logs,setResponse:r=>response=r,setFailWrite:()=>failWrite=true};
+ return {env,load,app,values,products,calls,logs,hides,setResponse:r=>response=r,setFailWrite:()=>failWrite=true};
 }
 test('all warehouses: exact quantity, not physical stock; zero and negative are unavailable',async()=>{
  const {load}=harness();const requests=[];
@@ -64,4 +64,13 @@ test('disabled feature and existing catalog sync perform no CRM calls/writes',as
  await job.refreshAvailability(h.app);assert.equal(h.calls.length,0);assert.equal(Object.keys((await job.getAvailabilitySnapshot(h.app)).states).length,0);
  h.env.MOYSKLAD_AVAILABILITY_ENABLED='true';h.values.set('syncState',{lock:{isLocked:true}});
  await job.refreshAvailability(h.app);assert.equal(h.calls.length,0);assert.equal(h.values.has('availability-v1'),false);
+});
+test('failed or partial CRM poll cannot hide products',async()=>{
+ const h=harness(),job=h.load('src/utils/availability-job');
+ for(const bad of [Error('CRM offline'),page([row(1)],2),page([row(1,null)])]){
+  h.setResponse(bad);await job.refreshAvailability(h.app);assert.equal(h.hides.length,0);
+ }
+ h.setResponse(page([row(1,0)]));await job.refreshAvailability(h.app);
+ assert.equal(h.hides.length,1);assert.equal(h.hides[0].states.get(id(1)),true);
+ assert.ok(Number.isFinite(Date.parse(h.hides[0].started)));
 });

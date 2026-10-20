@@ -3,7 +3,7 @@ const root=path.resolve(__dirname,'..'),sample='b4121850-6ab7-11ef-0a80-01fa0011
 const text='  Первый  абзац.\r\n\r\nВторой   абзац.\nСтрока <b>текст</b>  ';
 const entity=(id,folder=sample,description=text)=>({id,name:'CRM '+id,code:id,description,meta:{href:'https://example.test/product/'+id},productFolder:{meta:{href:'https://example.test/folder/'+folder}},salePrices:[]});
 const plain=x=>JSON.parse(JSON.stringify(x));
-function harness({stock=3,stockError=false,missingStock=false,existing=true}={}){
+function harness({stock=3,quantity,stockError=false,missingStock=false,existing=true}={}){
  const writes=[],cache=new Map(),rows=existing?[{id:1,moyskladId:'A',type:'product',category:{moyskladId:sample},description:'Old',displayTitle:'Editorial title',slug:'stable',image:[42],discountExcluded:true,engraving:true}]:[];
  const categories=[{id:10,moyskladId:sample},{id:11,moyskladId:'ordinary'}];
  let source=[entity('A')],bundles=[];
@@ -17,7 +17,7 @@ function harness({stock=3,stockError=false,missingStock=false,existing=true}={})
    if(uid.includes('moysklad-variant'))return {deleteMany:async()=>({count:0})};
    throw Error('Unexpected DB '+uid);
   }}};
- const item={moyskladId:'A',stock,productFolderId:sample,type:'product'};
+ const item={moyskladId:'A',stock,quantity,productFolderId:sample,type:'product'};
  function load(file){file=path.resolve(root,file.endsWith('.ts')?file:file+'.ts');if(cache.has(file))return cache.get(file);
   const module={exports:{}};const code=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
   vm.runInNewContext(code,{module,exports:module.exports,strapi:app,process:{env:{MOYSKLAD_ACCESS_TOKEN:'fake'}},console,
@@ -70,4 +70,22 @@ test('editorial bundle visibility survives webhook and full product synchronizat
   assert.equal(h.rows[0].hideBundleContents,true);
   assert(h.writes.every(w=>!Object.hasOwn(w.data,'hideBundleContents')));
  }
+});
+for(const mode of ['webhook','full'])for(const quantity of [-2,0,1])test(`${mode}: reserved Sample Sale is hidden, replenishment reveals without clearing manual hiding (${quantity})`,async()=>{
+ const h=harness({stock:3,quantity}),before=plain(h.rows[0]);
+ h.rows[0].isOutOfStock=true;h.rows[0].isHiddenOnSite=true;
+ if(mode==='webhook')await h.service.syncOneFromWebhook(entity('A'));else await h.service.syncAllUnlocked();
+ assert.equal(h.rows[0].isOutOfStock,quantity<=0);assert.equal(h.rows[0].moyskladStock,3);
+ assert.equal(h.rows[0].isHiddenOnSite,true);
+ for(const key of ['displayTitle','slug','image','engraving'])assert.deepEqual(h.rows[0][key],before[key]);
+});
+test('new fully reserved Sample Sale is not created; ordinary product at zero remains eligible for storefront',async()=>{
+ const hidden=harness({existing:false,stock:5,quantity:0});
+ await hidden.service.syncOneFromWebhook(entity('A'));assert.equal(hidden.writes.length,0);
+ const regular=harness({stock:5,quantity:0});await regular.service.syncOneFromWebhook(entity('A','ordinary'));
+ assert.notEqual(regular.rows[0].isOutOfStock,true);
+});
+test('malformed available quantity aborts full sync before any product writes',async()=>{
+ const h=harness({quantity:'0'});await assert.rejects(h.service.syncAllUnlocked(),/invalid quantity/);
+ assert.equal(h.writes.length,0);
 });
