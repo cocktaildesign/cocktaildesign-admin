@@ -1,0 +1,22 @@
+{
+  "kind": "collectionType",
+  "collectionName": "site_order_journals",
+  "info": { "singularName": "site-order-journal", "pluralName": "site-order-journals", "displayName": "Заявки сайта", "description": "Резерв заявок. Требующие проверки обрабатываются менеджером; автоматической повторной отправки в CRM нет." },
+  "options": { "draftAndPublish": false },
+  "attributes": {
+    "number": { "type": "string", "required": true, "unique": true, "private": true, "column": { "unique": true, "notNullable": true } },
+    "orderRequestId": { "type": "integer", "required": true, "unique": true, "private": true, "column": { "unique": true, "notNullable": true } },
+    "requestId": { "type": "string", "required": true, "unique": true, "private": true, "column": { "unique": true, "notNullable": true } },
+    "fingerprint": { "type": "string", "required": true, "private": true },
+    "crmState": { "type": "enumeration", "enum": ["Отправляется", "Создан в CRM", "Требует проверки"], "required": true, "default": "Отправляется", "private": true },
+    "details": { "type": "text", "private": true },
+    "handled": { "type": "boolean", "default": false, "private": true },
+    "managerNote": { "type": "text", "maxLength": 2000, "private": true },
+    "snapshot": { "type": "json", "private": true, "pluginOptions": { "content-manager": { "visible": false } } },
+    "readyAt": { "type": "datetime", "private": true },
+    "payloadBytes": { "type": "integer", "private": true },
+    "purgedAt": { "type": "datetime", "private": true },
+    "crmOrderId": { "type": "string", "private": true },
+    "crmOrderName": { "type": "string", "private": true }
+  }
+}

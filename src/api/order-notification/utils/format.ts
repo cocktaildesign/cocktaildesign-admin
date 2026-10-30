@@ -15,10 +15,13 @@ function field(label: string, value: unknown, bold = false): string[] {
   return lines;
 }
 
-export function formatOrder(order: any, positions: any[]): string[] {
+export function formatOrder(order: any, positions: any[], journal?: { journalNumber: string; crmConfirmed: boolean }): string[] {
   if (!order || !clean(order.name) || !numeric(order.sum) || order.sum < 0 ||
       !Array.isArray(positions) || positions.length < 1 || positions.length > 1000) throw new Error("invalid_order_snapshot");
-  const blocks: string[][] = [["Заказ принят в МойСклад.", "", "<b>Товары — цены до скидок</b>"]];
+  const status = journal && !journal.crmConfirmed
+    ? '⚠️ Передача в МойСклад не подтверждена — требуется проверка. Перед созданием заказа вручную проверьте CRM по номеру заявки.'
+    : 'Заказ принят в МойСклад.';
+  const blocks: string[][] = [[status, ...(journal ? [`Заявка сайта: ${escape(journal.journalNumber)}`] : []), "", "<b>Товары — цены до скидок</b>"]];
   let gross = 0;
   positions.forEach((p, index) => {
     if (!p || !numeric(p.quantity) || p.quantity <= 0 || !numeric(p.price) || p.price < 0 ||
@@ -35,7 +38,7 @@ export function formatOrder(order: any, positions: any[]): string[] {
   });
   const totals = ["", `Товары до скидок: ${money(gross)}`];
   if (gross > order.sum) totals.push(`Скидка по заказу: ${money(gross - order.sum)}`);
-  totals.push(`<b>Сумма заказа: ${money(order.sum)}</b>`);
+  totals.push(`<b>${journal && !journal.crmConfirmed ? 'Сумма заявки' : 'Сумма заказа'}: ${money(order.sum)}</b>`);
   blocks.push(totals);
   blocks.push(["", "<b>Покупатель</b>", ...field("Имя: ", order.agent?.name), ...field("Телефон: ", order.agent?.phone),
     ...field("Email: ", order.agent?.email), ...field("Адрес: ", order.shipmentAddress)]);
@@ -57,5 +60,5 @@ export function formatOrder(order: any, positions: any[]): string[] {
   if (body) bodies.push(body);
   if (bodies.length > 100) throw new Error("notification_too_large");
   const name = escape(Array.from(clean(order.name)).slice(0, 80).join(""));
-  return bodies.map((text, i) => `<b>Новый заказ №${name}</b>${bodies.length > 1 ? ` · ${i + 1}/${bodies.length}` : ""}\n\n${text}`);
+  return bodies.map((text, i) => `<b>${journal && !journal.crmConfirmed ? 'Новая заявка' : 'Новый заказ'} №${name}</b>${bodies.length > 1 ? ` · ${i + 1}/${bodies.length}` : ""}\n\n${text}`);
 }
