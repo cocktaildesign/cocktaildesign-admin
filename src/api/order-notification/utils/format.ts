@@ -40,7 +40,9 @@ export function formatOrder(order: any, positions: any[]): string[] {
   blocks.push(["", "<b>Покупатель</b>", ...field("Имя: ", order.agent?.name), ...field("Телефон: ", order.agent?.phone),
     ...field("Email: ", order.agent?.email), ...field("Адрес: ", order.shipmentAddress)]);
   if (clean(order.description)) blocks.push(["", "<b>Детали заказа</b>", ...clean(order.description).split(" | ").flatMap(part => field("", part))]);
-  blocks.push(["", "Источник: new.cocktaildesign.ru"]);
+  const source = process.env.ORDER_STOREFRONT_URL === "https://cocktaildesign.ru"
+    ? "cocktaildesign.ru" : "new.cocktaildesign.ru";
+  blocks.push(["", `Источник: ${source}`]);
 
   // Keep ordinary product blocks together, splitting exceptionally long fields at safe HTML boundaries.
   const bodies: string[] = []; let body = "";
