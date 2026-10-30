@@ -11,6 +11,18 @@ const providerRequire = createRequire(require.resolve('@strapi/provider-email-se
 const transferRequire = createRequire(require.resolve('@strapi/data-transfer'));
 const editorRequire = createRequire(require.resolve('@strapi/content-manager/package.json'));
 
+test('Strapi plugins and application share the core error constructors used for HTTP status mapping', () => {
+  const coreRequire = createRequire(require.resolve('@strapi/core/package.json'));
+  const coreErrors = coreRequire('@strapi/utils').errors;
+  for (const packageName of ['@strapi/plugin-users-permissions', '@strapi/content-manager', '@strapi/upload', '@strapi/admin']) {
+    const scoped = createRequire(require.resolve(packageName + '/package.json'));
+    for (const kind of ['ForbiddenError', 'UnauthorizedError', 'ValidationError']) {
+      assert(new (scoped('@strapi/utils').errors[kind])() instanceof coreErrors.ApplicationError, packageName + ' ' + kind);
+    }
+  }
+  assert(new (require('@strapi/utils').errors.ForbiddenError)() instanceof coreErrors.ApplicationError);
+});
+
 test('Strapi mail provider sends headers and a memory attachment through loopback SMTP', async () => {
   const recipients = [], messages = [], sockets = new Set();
   const server = net.createServer(socket => {
