@@ -53,6 +53,10 @@ async function boot() {
  assert.deepEqual(calls, ['counterparty', 'order']);
  assert.equal((await query('api::promo-code.promo-code').findOne({ where: { id: promo.id } })).usageCount, 1);
  const normal = concurrent.find(c => c.body.crmConfirmed); assert(normal);
+ assert.deepEqual(normal.body.analytics, {currency:'RUB',revenue:1800,products:[{id:'Jig25/40',name:'Джиггер 25/40 мл',price:900,quantity:2}]});
+ const replay = await submit(ctx(key, body));
+ assert.equal(replay.body.journalId,normal.body.journalId);assert.deepEqual(replay.body.analytics,normal.body.analytics);
+ assert.equal(calls.length,2,'Analytics adds no CRM calls');
  const saved = await row(normal); assert(saved.details.includes('25/40')); assert(saved.details.includes('Jig25/40'));
  const conflict = await submit(ctx(key, { ...body, address: 'Changed' })); assert.equal(conflict.status, 409); assert.equal(calls.length, 2);
  await queue.discoverOrder(); const notice = await queue.claimOrder(); assert(notice); assert(notice.messages.join('\n').includes('Заявка сайта: CD-'));
@@ -62,6 +66,7 @@ async function boot() {
  assert(await queue.completeOrder(ack)); assert(await queue.completeOrder(ack));
  for (const failure of ['counterparty-down', 'order-timeout']) {
   mode = failure; const failureKey = randomUUID(), failed = await submit(ctx(failureKey)); assert.equal(failed.status, 202); assert(failed.body.accepted);
+  assert.equal(failed.body.analytics.revenue,2000);assert.equal(failed.body.analytics.products[0].price,1000);
   const n = calls.length; assert((await submit(ctx(failureKey))).body.accepted); assert.equal(calls.length, n, 'No CRM POST retry');
   const message = await queue.claimOrder(); assert(message); assert(message.messages.join('\n').includes('не подтверждена'));
   await queue.completeOrder({ id: message.id, leaseToken: message.leaseToken, ok: true, messageIds: message.messages.map((_, i) => String(i + 100)) });
@@ -93,7 +98,8 @@ async function boot() {
  await journal.maintainJournal(new Date(Date.now() + 91 * 86400000));
  const purged = await query().findOne({ where: { id: saved.id } }); assert.equal(purged.snapshot, null); assert.equal(purged.details, null);
  assert.equal((await row(missing)).snapshot.version, 1);
- assert((await submit(ctx(key, body))).body.accepted, 'Idempotency survives payload expiry');
+ const expiredReplay=await submit(ctx(key, body));assert(expiredReplay.body.accepted, 'Idempotency survives payload expiry');
+ assert.equal(expiredReplay.body.analytics,undefined,'Expired snapshots do not fabricate commerce events');
  const cfg = await app.plugin('content-manager').service('content-types').findConfiguration(app.contentTypes[uid]);
  assert.equal(cfg.metadatas.details.edit.editable, false); assert.equal(cfg.metadatas.managerNote.edit.editable, true);
  assert.equal(cfg.settings.mainField, 'number');

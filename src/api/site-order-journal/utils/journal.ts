@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createJournal } from './admin';
 import { formatOrder } from '../../order-notification/utils/format';
 import { bindEngravingFiles, releaseEngravingFiles, completeEngravingFiles } from '../../../utils/order-engraving-files';
+import { purchaseAnalytics } from './analytics';
 
 export const JOURNAL_UID = 'api::site-order-journal.site-order-journal' as any;
 const REQUEST_UID = 'api::order-request.order-request';
@@ -22,9 +23,10 @@ export function requestFingerprint(body: any): string {
 }
 
 function receipt(row: any, replayed = false) {
+  const analytics = purchaseAnalytics(row.snapshot);
   return { ok: true, accepted: true, journalNumber: row.number, journalId: row.requestId,
     orderId: row.crmOrderId || row.requestId, orderName: row.crmOrderName || row.number,
-    crmConfirmed: row.crmState === CREATED, replayed };
+    crmConfirmed: row.crmState === CREATED, replayed, ...(analytics ? { analytics } : {}) };
 }
 
 export async function replayJournal(ctx: any, requestId: number): Promise<boolean> {
