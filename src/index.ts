@@ -1,5 +1,6 @@
 import type { Core } from "@strapi/strapi";
 import { registerHomepageBannerValidation } from "./utils/homepage-banners";
+import { registerJournalProtection, configureJournalAdmin } from './api/site-order-journal/utils/admin';
 import cron from "node-cron";
 import { startAvailabilityJob, stopAvailabilityJob } from "./utils/availability-job";
 import { startNoveltyJob, stopNoveltyJob } from "./utils/novelty-job";
@@ -76,6 +77,7 @@ let fullSyncRunning = false;
 export default {
   register({ strapi }: { strapi: Core.Strapi }) {
     registerHomepageBannerValidation(strapi);
+    registerJournalProtection(strapi);
     strapi.documents.use(async (context, next) => {
       if (!shouldRecomputeCategoryCountsAfterAdminChange(context)) {
         return next();
@@ -98,6 +100,7 @@ export default {
   },
 
   async bootstrap({ strapi }: { strapi: Core.Strapi }) {
+    await configureJournalAdmin(strapi);
     // Одноразовая чистка старого поля stockUpdated из store
     if (process.env.MOYSKLAD_CLEAN_SYNC_STATE === "true") {
       const storeConfig = {

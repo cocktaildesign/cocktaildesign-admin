@@ -22,7 +22,7 @@
     },
     "status": {
       "type": "enumeration",
-      "enum": ["processing", "succeeded"],
+      "enum": ["processing", "succeeded", "needs_review"],
       "required": true,
       "default": "processing"
     },

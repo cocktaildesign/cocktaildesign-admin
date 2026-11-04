@@ -295,7 +295,7 @@ async function resolveOrderItemByCode(rawCode: string, folderIds?: Set<string>):
     if (variant.href) {
       href = variant.href;
       type = "variant";
-    } else {
+    } else if (process.env.ORDER_JOURNAL_ENABLED !== 'true') {
       const live = await findProductHref(code);
       if (live) {
         href = live.href;
@@ -303,12 +303,12 @@ async function resolveOrderItemByCode(rawCode: string, folderIds?: Set<string>):
       }
     }
 
-    if (!href) {
+    if (!href && process.env.ORDER_JOURNAL_ENABLED !== 'true') {
       throw createOrderError("item_not_found");
     }
 
     return {
-      href,
+      href: href || '',
       type,
       trustedName: (variant.name || parentProduct?.name || code).trim(),
       trustedPriceRub: resolvedPrice,
@@ -350,7 +350,7 @@ async function resolveOrderItemByCode(rawCode: string, folderIds?: Set<string>):
   let href = product.href ?? null;
   let type = product.type ?? "product";
 
-  if (!href) {
+  if (!href && process.env.ORDER_JOURNAL_ENABLED !== 'true') {
     const live = await findProductHref(code);
     if (live) {
       href = live.href;
@@ -358,12 +358,12 @@ async function resolveOrderItemByCode(rawCode: string, folderIds?: Set<string>):
     }
   }
 
-  if (!href) {
+  if (!href && process.env.ORDER_JOURNAL_ENABLED !== 'true') {
     throw createOrderError("item_not_found");
   }
 
   return {
-    href,
+    href: href || '',
     type,
     trustedName: (product.name || code).trim(),
     trustedPriceRub: product.price,
@@ -477,7 +477,7 @@ async function createCustomerOrder(params: {
   }[];
   description: string;
   shipmentAddress: string;
-}): Promise<{ id: string; name: string }> {
+}): Promise<{ id: string; name: string; sum?: number }> {
   const body = {
     organization: {
       meta: {
@@ -583,6 +583,7 @@ async function createCustomerOrder(params: {
     const parsed = data as {
       id?: unknown;
       name?: unknown;
+      sum?: unknown;
     };
 
     if (
@@ -599,6 +600,7 @@ async function createCustomerOrder(params: {
     const result = {
       id: parsed.id.trim(),
       name: parsed.name.trim(),
+      ...(typeof parsed.sum === 'number' && Number.isSafeInteger(parsed.sum) && parsed.sum >= 0 ? { sum: parsed.sum } : {}),
     };
 
     strapi.log.info(`[order] Заказ МойСклад создан: ${result.name}`);

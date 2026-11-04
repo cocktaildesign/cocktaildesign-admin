@@ -52,7 +52,11 @@ function getIdempotencyKey(ctx: Context): string | null {
   return key;
 }
 
-function sendExistingOrderRequest(ctx: Context, existing: OrderRequestRow): boolean {
+async function sendExistingOrderRequest(ctx: Context, existing: OrderRequestRow): Promise<boolean> {
+  if (strapi.contentTypes?.['api::site-order-journal.site-order-journal' as any]) {
+    const journal = await import('../../site-order-journal/utils/journal');
+    if (await journal.replayJournal(ctx, existing.id)) return true;
+  }
   if (
     existing.status === "succeeded" &&
     typeof existing.orderId === "string" &&
@@ -417,7 +421,7 @@ export default {
     }
 
     const existingBeforeCreate = await findOrderRequestByKey(idempotencyKey);
-    if (existingBeforeCreate && sendExistingOrderRequest(ctx, existingBeforeCreate)) {
+    if (existingBeforeCreate && await sendExistingOrderRequest(ctx, existingBeforeCreate)) {
       return;
     }
 
@@ -426,6 +430,7 @@ export default {
     catch { ctx.status = 400; ctx.body = { ok: false, error: "invalid_engraving_files" }; return; }
 
     const positions: {
+      code: string;
       productHref: string;
       productType: string;
       quantity: number;
@@ -444,6 +449,7 @@ export default {
         const resolved = await orderService.resolveOrderItemByCode(item.code, sampleSaleFolderIds);
 
         positions.push({
+          code: item.code,
           productHref: resolved.href,
           productType: resolved.type,
           quantity: item.quantity,
@@ -548,6 +554,14 @@ export default {
         : discountPlan.discountablePositionPercent,
     }));
 
+    if (process.env.ORDER_JOURNAL_ENABLED === 'true') {
+      const journal = await import('../../site-order-journal/utils/journal');
+      await journal.acceptJournalOrder(ctx, { key: idempotencyKey, name, phone, address, positions, orderPositions,
+        description, totalKopecks: Math.round(discountPlan.finalPrice * 100),
+        promoId: resolvedPromo?.promoId ?? null, engravingFiles }, orderService);
+      return;
+    }
+
     let orderRequestId: number | null = null;
     let orderCreationStarted = false;
     let filesBound = false;
@@ -558,7 +572,7 @@ export default {
 
       if (acquireResult.kind === "handled") {
         const existingAfterRace = await findOrderRequestByKey(idempotencyKey);
-        if (existingAfterRace && sendExistingOrderRequest(ctx, existingAfterRace)) {
+        if (existingAfterRace && await sendExistingOrderRequest(ctx, existingAfterRace)) {
           return;
         }
 

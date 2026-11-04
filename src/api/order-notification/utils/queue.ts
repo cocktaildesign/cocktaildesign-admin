@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { formatOrder } from "./format";
+import { discoverJournalNotification, journalAvailable, maintainJournal } from '../../site-order-journal/utils/journal';
 
 const UID = "api::order-notification.order-notification" as any;
 const query = () => strapi.db.query(UID);
@@ -14,12 +15,18 @@ export function enabled() {
 
 export async function discoverOrder() {
   if (!enabled()) return;
+  if (journalAvailable()) {
+    await maintainJournal();
+    if (await discoverJournalNotification()) return;
+  }
   // Read succeeded records only. Never update an order, promo, or checkout request.
-  const row = await strapi.db.connection("order_requests as r")
-    .leftJoin("order_notifications as n", "n.order_id", "r.order_id")
+  const selection = strapi.db.connection("order_requests as r")
+    .leftJoin("order_notifications as n", "n.source_request_id", "r.id")
     .where("r.status", "succeeded").where("r.id", ">", Number(process.env.ORDER_NOTIFICATIONS_FROM_REQUEST_ID))
     .whereNull("n.id").whereNotNull("r.order_id").orderBy("r.id", "asc")
-    .select("r.id", "r.order_id", "r.order_name").first();
+    .select("r.id", "r.order_id", "r.order_name");
+  if (journalAvailable()) selection.leftJoin('site_order_journals as j', 'j.order_request_id', 'r.id').whereNull('j.id');
+  const row = await selection.first();
   if (!row) return;
   try {
     await strapi.documents(UID).create({ data: {
@@ -51,8 +58,8 @@ async function readOrder(orderId: string) {
 
 async function failLease(row: any, error: string, now: Date, retryAfter = 0) {
   return query().updateMany({ where: { id: row.id, notificationStatus: "sending", leaseToken: row.leaseToken }, data: {
-    notificationStatus: row.attempts >= MAX_ATTEMPTS ? "failed" : "pending", deliveryError: error,
-    nextAttemptAt: new Date(now.getTime() + Math.max(retryAfter * 1000, Math.min(3_600_000, 60_000 * 2 ** (row.attempts - 1)))),
+    notificationStatus: !String(row.orderId).startsWith('journal:') && row.attempts >= MAX_ATTEMPTS ? "failed" : "pending", deliveryError: error,
+    nextAttemptAt: new Date(now.getTime() + Math.max(retryAfter * 1000, Math.min(3_600_000, 60_000 * 2 ** Math.min(6, row.attempts - 1)))),
     leaseExpiresAt: null,
   } });
 }
@@ -67,7 +74,7 @@ export async function claimOrder(now = new Date()) {
   const row = await query().findOne({ where: due, orderBy: { createdAt: "asc" } });
   if (!row) return null;
   const where = { id: row.id, notificationStatus: row.notificationStatus, leaseToken: row.leaseToken || null, attempts: row.attempts, ...due };
-  if (row.attempts >= MAX_ATTEMPTS) {
+  if (!String(row.orderId).startsWith('journal:') && row.attempts >= MAX_ATTEMPTS) {
     await query().updateMany({ where, data: { notificationStatus: "failed", deliveryError: "retry_limit", leaseToken: null, leaseExpiresAt: null } });
     return null;
   }
