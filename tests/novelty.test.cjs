@@ -81,7 +81,7 @@ test('audit pagination, page/deadline bounds and not-found; read-only methods',a
 });
 test('60-day boundary uses creation date inclusive; null never becomes a new item',()=>{
  const h=harness(),isNew=h.load('src/utils/product-novelty').isProductNew;
- assert.equal(isNew(new Date(Date.now()-59*86400000).toISOString(),60),true);
- assert.equal(isNew(new Date(Date.now()-61*86400000).toISOString(),60),false);
- assert.equal(isNew(null,60),false);
+ assert.equal(isNew(new Date(Date.now()-59*86400000).toISOString(),60,false),true);
+ assert.equal(isNew(new Date(Date.now()-61*86400000).toISOString(),60,false),false);
+ assert.equal(isNew(null,60,false),false);
 });

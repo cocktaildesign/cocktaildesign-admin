@@ -72,8 +72,9 @@ export async function getProductNoveltyConfig(strapi: any): Promise<ProductNovel
   }
 }
 
-export function isProductNew(moyskladNoveltyAt: unknown, noveltyDays: number): boolean {
-  if (moyskladNoveltyAt === null || moyskladNoveltyAt === undefined) {
+/** Sample Sale has its own collection and is never a storefront novelty. */
+export function isProductNew(moyskladNoveltyAt: unknown, noveltyDays: number, isSampleSale: boolean): boolean {
+  if (isSampleSale || moyskladNoveltyAt === null || moyskladNoveltyAt === undefined) {
     return false;
   }
 
