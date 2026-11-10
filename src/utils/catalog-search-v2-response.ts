@@ -238,7 +238,7 @@ export function mapCatalogSearchV2Rows(
         image: searchImage,
         categoryName: resolveStorefrontCategoryName(product.category, sampleSaleFolderIds),
         matchedVariant: matchedVariant ? mapMatchedVariant(matchedVariant) : null,
-        isNew: isProductNew(product.moyskladNoveltyAt, noveltyConfig.noveltyDays, isSampleSale),
+        isNew: isProductNew(product.moyskladNoveltyAt, noveltyConfig.noveltyDays, isSampleSale, noveltyConfig.manualProductIds?.includes(product.id)),
         noveltyBadgeColor: noveltyConfig.noveltyBadgeColor,
         isSampleSale,
         badges: mapProductBadges(product.badges),

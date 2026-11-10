@@ -65,13 +65,13 @@ function fixture(options = {}) {
     make(15, 10, { name: 'Инструмент (уцененный)', discountExcluded: true }),
     make(16, 1, { priceOld: 900, moyskladNoveltyAt: date(200) }),
   ];
-  const collections = options.collections ?? [
+  const collections = (options.collections ?? [
     { id: 1, slug: 'novinki', selectionMode: 'new', noveltyDays: 100, noveltyBadgeColor: '#2eae4a' },
     { id: 2, slug: 'utsenka', selectionMode: 'category', sourceCategory: byCategory(1) },
     { id: 3, slug: 'manual', selectionMode: 'manual', products: [{ id: 1 }, { id: 4 }, { id: 14 }] },
     { id: 4, slug: 'discounts', selectionMode: 'discount' },
     { id: 5, slug: 'another-new', selectionMode: 'new', noveltyDays: 60 },
-  ];
+  ]).map(collection => ({ publishedAt: date(1), ...collection }));
   const calls = [];
   const strapi = { log: { info() {}, warn() {}, error() {} }, db: { query(uid) {
     const rows = uid === 'api::catalog-collection.catalog-collection' ? collections :
@@ -123,7 +123,7 @@ function fixture(options = {}) {
     assert.equal(JSON.stringify({ products, categories, collections }), before, 'Read API must not mutate source records');
     return plain(ctx.body);
   }
-  return { products, categories, collections, calls, make, load, invoke, controller,
+  return { products, categories, collections, calls, make, load, invoke, controller, strapi,
     list: (query = {}, slug = 'novinki') => invoke('collectionProducts', query, slug) };
 }
 

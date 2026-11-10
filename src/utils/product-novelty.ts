@@ -7,7 +7,15 @@ const NOVELTY_BADGE_COLOR_REGEX = /^#[0-9A-Fa-f]{6}$/;
 export type ProductNoveltyConfig = {
   noveltyDays: number;
   noveltyBadgeColor: string;
+  manualProductIds?: readonly number[];
 };
+
+/** Existing collection relations belong to Strapi, not to the CRM sync. */
+export function getManualNoveltyProductIds(products: unknown): number[] {
+  if (!Array.isArray(products)) return [];
+  return [...new Set(products.map(product => product?.id)
+    .filter((id): id is number => Number.isSafeInteger(id) && id > 0))];
+}
 
 function normalizeNoveltyDays(value: unknown): number {
   const raw = typeof value === "number" ? value : Number(value);
@@ -43,14 +51,16 @@ export async function getProductNoveltyConfig(strapi: any): Promise<ProductNovel
   const defaults: ProductNoveltyConfig = {
     noveltyDays: DEFAULT_NOVELTY_DAYS,
     noveltyBadgeColor: DEFAULT_NOVELTY_BADGE_COLOR,
+    manualProductIds: [],
   };
 
   try {
     const collectionQuery = strapi.db.query("api::catalog-collection.catalog-collection");
 
     const collection = await collectionQuery.findOne({
-      where: { slug: NOVELTY_COLLECTION_SLUG },
+      where: { slug: NOVELTY_COLLECTION_SLUG, publishedAt: { $notNull: true } },
       select: ["noveltyDays", "noveltyBadgeColor", "selectionMode"],
+      populate: { products: { select: ["id"] } },
     });
 
     if (!collection) {
@@ -66,6 +76,7 @@ export async function getProductNoveltyConfig(strapi: any): Promise<ProductNovel
     return {
       noveltyDays: normalizeNoveltyDays(collection.noveltyDays),
       noveltyBadgeColor: normalizeNoveltyBadgeColor(collection.noveltyBadgeColor),
+      manualProductIds: getManualNoveltyProductIds(collection.products),
     };
   } catch {
     return defaults;
@@ -73,8 +84,12 @@ export async function getProductNoveltyConfig(strapi: any): Promise<ProductNovel
 }
 
 /** Sample Sale has its own collection and is never a storefront novelty. */
-export function isProductNew(moyskladNoveltyAt: unknown, noveltyDays: number, isSampleSale: boolean): boolean {
-  if (isSampleSale || moyskladNoveltyAt === null || moyskladNoveltyAt === undefined) {
+export function isProductNew(
+  moyskladNoveltyAt: unknown, noveltyDays: number, isSampleSale: boolean, isManuallyIncluded = false,
+): boolean {
+  if (isSampleSale) return false;
+  if (isManuallyIncluded) return true;
+  if (moyskladNoveltyAt === null || moyskladNoveltyAt === undefined) {
     return false;
   }
 
