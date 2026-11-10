@@ -281,7 +281,7 @@ function mapCatalogProductPreviewItem(
       code: product.code ?? null,
       image: (product as any).image ?? null,
       variants: mapPreviewVariants((product as any).variants),
-      isNew: isProductNew(product.moyskladNoveltyAt, noveltyConfig.noveltyDays),
+      isNew: isProductNew(product.moyskladNoveltyAt, noveltyConfig.noveltyDays, isSampleSale),
       noveltyBadgeColor: noveltyConfig.noveltyBadgeColor,
       isSampleSale,
       badges: mapProductBadges(product.badges),
@@ -326,8 +326,8 @@ function getNoveltyCutoffIso(noveltyDays: number): string {
   return cutoffDate.toISOString();
 }
 
-/** Where для selectionMode=new: видимость + moyskladNoveltyAt в периоде. */
-function buildNewCollectionProductsWhere(noveltyDays: number) {
+/** New collection membership is filtered before counts, paging and photo ordering. */
+function buildNewCollectionProductsWhere(noveltyDays: number, sampleSaleFolderIds: Set<string>) {
   const cutoff = getNoveltyCutoffIso(noveltyDays);
 
   return {
@@ -335,6 +335,13 @@ function buildNewCollectionProductsWhere(noveltyDays: number) {
       getStorefrontVisibleProductFilter(),
       { moyskladNoveltyAt: { $notNull: true } },
       { moyskladNoveltyAt: { $gte: cutoff } },
+      // A missing category/id is not Sample Sale. Explicitly retain SQL NULLs.
+      ...(sampleSaleFolderIds.size ? [{
+        $or: [
+          { category: { moyskladId: { $null: true } } },
+          { category: { moyskladId: { $notIn: [...sampleSaleFolderIds] } } },
+        ],
+      }] : []),
     ],
   };
 }
@@ -460,7 +467,8 @@ async function getCollectionProducts(strapi: any, collectionSlug: string): Promi
   // --- new: новинки по moyskladNoveltyAt (для дерева категорий — все совпадения, страницами) ---
   if (selectionMode === "new") {
     const noveltyDays = resolveNoveltyDays((collection as { noveltyDays?: unknown }).noveltyDays);
-    const where = buildNewCollectionProductsWhere(noveltyDays);
+    const sampleSaleFolderIds = await loadSampleSaleFolderIdSet(strapi);
+    const where = buildNewCollectionProductsWhere(noveltyDays, sampleSaleFolderIds);
 
     const pageSize = 200;
     const allRows: ProductRow[] = [];
@@ -1051,7 +1059,7 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
           engravingEnabled: product.engravingEnabled ?? false,
           discountExcluded: isProductDiscountExcluded(product, sampleSaleFolderIds),
           code: product.code ?? null,
-          isNew: isProductNew(product.moyskladNoveltyAt, noveltyConfig.noveltyDays),
+          isNew: isProductNew(product.moyskladNoveltyAt, noveltyConfig.noveltyDays, isSampleSale),
           noveltyBadgeColor: noveltyConfig.noveltyBadgeColor,
           isSampleSale,
           badges: mapProductBadges(product.badges),
@@ -1191,7 +1199,7 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
                   image: matchedVariant.image ?? null,
                 }
               : null,
-            isNew: isProductNew(product.moyskladNoveltyAt, noveltyConfig.noveltyDays),
+            isNew: isProductNew(product.moyskladNoveltyAt, noveltyConfig.noveltyDays, isSampleSale),
             noveltyBadgeColor: noveltyConfig.noveltyBadgeColor,
             isSampleSale,
             badges: mapProductBadges(product.badges),
@@ -1290,7 +1298,7 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
             image: randomProductImage,
             moyskladId: p.moyskladId ?? null,
             categoryName: resolveStorefrontCategoryName(p.category, sampleSaleFolderIds),
-            isNew: isProductNew(p.moyskladNoveltyAt, noveltyConfig.noveltyDays),
+            isNew: isProductNew(p.moyskladNoveltyAt, noveltyConfig.noveltyDays, isSampleSale),
             noveltyBadgeColor: noveltyConfig.noveltyBadgeColor,
             isSampleSale,
             badges: mapProductBadges(p.badges),
@@ -1347,7 +1355,7 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
       const productQuery = strapi.db.query("api::moysklad-product.moysklad-product");
       const noveltyDays = resolveNoveltyDays((collection as { noveltyDays?: unknown }).noveltyDays);
 
-      let where: Record<string, unknown> = buildNewCollectionProductsWhere(noveltyDays);
+      let where: Record<string, unknown> = buildNewCollectionProductsWhere(noveltyDays, sampleSaleFolderIds);
 
       // Опциональный фильтр по категории (как у остальных режимов)
       const filterCategorySlug = String(ctx.query.categorySlug ?? "").trim();
