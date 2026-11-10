@@ -8,6 +8,7 @@ import { mapProductBadges } from "../../../utils/product-badges";
 import {
   getProductNoveltyConfig,
   isProductNew,
+  getManualNoveltyProductIds,
   type ProductNoveltyConfig,
 } from "../../../utils/product-novelty";
 import {
@@ -281,7 +282,7 @@ function mapCatalogProductPreviewItem(
       code: product.code ?? null,
       image: (product as any).image ?? null,
       variants: mapPreviewVariants((product as any).variants),
-      isNew: isProductNew(product.moyskladNoveltyAt, noveltyConfig.noveltyDays, isSampleSale),
+      isNew: isProductNew(product.moyskladNoveltyAt, noveltyConfig.noveltyDays, isSampleSale, noveltyConfig.manualProductIds?.includes(product.id)),
       noveltyBadgeColor: noveltyConfig.noveltyBadgeColor,
       isSampleSale,
       badges: mapProductBadges(product.badges),
@@ -327,14 +328,19 @@ function getNoveltyCutoffIso(noveltyDays: number): string {
 }
 
 /** New collection membership is filtered before counts, paging and photo ordering. */
-function buildNewCollectionProductsWhere(noveltyDays: number, sampleSaleFolderIds: Set<string>) {
+function buildNewCollectionProductsWhere(
+  noveltyDays: number, sampleSaleFolderIds: Set<string>, manualProductIds: number[] = [],
+) {
   const cutoff = getNoveltyCutoffIso(noveltyDays);
 
   return {
     $and: [
       getStorefrontVisibleProductFilter(),
-      { moyskladNoveltyAt: { $notNull: true } },
-      { moyskladNoveltyAt: { $gte: cutoff } },
+      // Union in the database keeps one row per product, before counts and paging.
+      { $or: [
+        { moyskladNoveltyAt: { $gte: cutoff } },
+        ...(manualProductIds.length ? [{ id: { $in: manualProductIds } }] : []),
+      ] },
       // A missing category/id is not Sample Sale. Explicitly retain SQL NULLs.
       ...(sampleSaleFolderIds.size ? [{
         $or: [
@@ -453,7 +459,7 @@ async function getCollectionProducts(strapi: any, collectionSlug: string): Promi
 
   // Находим коллекцию по slug
   const collection = await collectionQuery.findOne({
-    where: { slug: collectionSlug },
+    where: { slug: collectionSlug, publishedAt: { $notNull: true } },
     populate: {
       products: { select: ["id"] },
       sourceCategory: { select: ["id", "slug"] },
@@ -468,7 +474,9 @@ async function getCollectionProducts(strapi: any, collectionSlug: string): Promi
   if (selectionMode === "new") {
     const noveltyDays = resolveNoveltyDays((collection as { noveltyDays?: unknown }).noveltyDays);
     const sampleSaleFolderIds = await loadSampleSaleFolderIdSet(strapi);
-    const where = buildNewCollectionProductsWhere(noveltyDays, sampleSaleFolderIds);
+    const where = buildNewCollectionProductsWhere(
+      noveltyDays, sampleSaleFolderIds, getManualNoveltyProductIds(collection.products),
+    );
 
     const pageSize = 200;
     const allRows: ProductRow[] = [];
@@ -1059,7 +1067,7 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
           engravingEnabled: product.engravingEnabled ?? false,
           discountExcluded: isProductDiscountExcluded(product, sampleSaleFolderIds),
           code: product.code ?? null,
-          isNew: isProductNew(product.moyskladNoveltyAt, noveltyConfig.noveltyDays, isSampleSale),
+          isNew: isProductNew(product.moyskladNoveltyAt, noveltyConfig.noveltyDays, isSampleSale, noveltyConfig.manualProductIds?.includes(product.id)),
           noveltyBadgeColor: noveltyConfig.noveltyBadgeColor,
           isSampleSale,
           badges: mapProductBadges(product.badges),
@@ -1199,7 +1207,7 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
                   image: matchedVariant.image ?? null,
                 }
               : null,
-            isNew: isProductNew(product.moyskladNoveltyAt, noveltyConfig.noveltyDays, isSampleSale),
+            isNew: isProductNew(product.moyskladNoveltyAt, noveltyConfig.noveltyDays, isSampleSale, noveltyConfig.manualProductIds?.includes(product.id)),
             noveltyBadgeColor: noveltyConfig.noveltyBadgeColor,
             isSampleSale,
             badges: mapProductBadges(product.badges),
@@ -1298,7 +1306,7 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
             image: randomProductImage,
             moyskladId: p.moyskladId ?? null,
             categoryName: resolveStorefrontCategoryName(p.category, sampleSaleFolderIds),
-            isNew: isProductNew(p.moyskladNoveltyAt, noveltyConfig.noveltyDays, isSampleSale),
+            isNew: isProductNew(p.moyskladNoveltyAt, noveltyConfig.noveltyDays, isSampleSale, noveltyConfig.manualProductIds?.includes(p.id)),
             noveltyBadgeColor: noveltyConfig.noveltyBadgeColor,
             isSampleSale,
             badges: mapProductBadges(p.badges),
@@ -1335,8 +1343,9 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
     // Проверяем что коллекция существует и получаем её мета-данные
     const collectionQuery = strapi.db.query("api::catalog-collection.catalog-collection");
     const collection = await collectionQuery.findOne({
-      where: { slug: collectionSlug },
+      where: { slug: collectionSlug, publishedAt: { $notNull: true } },
       select: ["id", "title", "slug", "description", "selectionMode", "noveltyDays"],
+      populate: { products: { select: ["id"] } },
     });
 
     if (!collection) {
@@ -1355,7 +1364,9 @@ export default factories.createCoreController("api::moysklad-category.moysklad-c
       const productQuery = strapi.db.query("api::moysklad-product.moysklad-product");
       const noveltyDays = resolveNoveltyDays((collection as { noveltyDays?: unknown }).noveltyDays);
 
-      let where: Record<string, unknown> = buildNewCollectionProductsWhere(noveltyDays, sampleSaleFolderIds);
+      let where: Record<string, unknown> = buildNewCollectionProductsWhere(
+        noveltyDays, sampleSaleFolderIds, getManualNoveltyProductIds(collection.products),
+      );
 
       // Опциональный фильтр по категории (как у остальных режимов)
       const filterCategorySlug = String(ctx.query.categorySlug ?? "").trim();
